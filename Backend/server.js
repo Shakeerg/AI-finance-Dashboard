@@ -1,36 +1,59 @@
-const mongoose = require('mongoose');
-const express = require('express');
-const cors = require('cors');
-require('dotenv').config();
+const express = require("express");
+const cors = require("cors");
+const dotenv = require("dotenv");
+const connectDB = require("./config/db");
+
+dotenv.config({ quiet: true });
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// ==========================================
-// 1. Global Middlewares
-// ==========================================
+// Connect Database
+connectDB();
+
+// Middleware
 app.use(cors());
 app.use(express.json());
 
-// ==========================================
-// 2. Health Check & Route Imports
-// ==========================================
-app.get('/health', (req, res) =>{
-    res.status(200).json({status: 'healthy' , timestamp: newDate() });
+// Health Route
+app.get("/health", (req, res) => {
+    res.status(200).json({
+        status: "healthy",
+        timestamp: new Date()
+    });
 });
-// We will link our actual routes folder here in Phase 1 Day 3
-// app.use('/api/v1/transactions', require('./routes/transactionRoutes'));
 
-// ==========================================
-// 3. Global Error Handling Middleware
-// ==========================================
+// Routes
+app.use("/api/v1/transactions", require("./routes/transactionRoutes"));
+
+// Global Error Handler
 app.use((err, req, res, next) => {
-    console.log('Backend Error Cache:' , err.stack);
-    res.status(500).json({success:false, message: err.message ||'Internal Server Error Hook triggered.'});
+    console.error(err.stack);
+
+    res.status(500).json({
+        success: false,
+        message: err.message || "Internal Server Error"
+    });
 });
 
-// ==========================================
-// 4. Server Initialization Listener
-// ==========================================
+// Start Server
+const server = app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Listening on http://0.0.0.0:${PORT}`);
+});
 
-app.listen(PORT, () => {console.log(`API Server Engine operational on PORT ${PORT}`)});
+server.on("listening", () => {
+    console.log("Server is now listening.");
+});
+
+server.on("error", (err) => {
+    console.error("Listen Error:", err);
+});
+
+// Catch unexpected errors
+process.on("unhandledRejection", (err) => {
+    console.error("Unhandled Rejection:", err);
+});
+
+process.on("uncaughtException", (err) => {
+    console.error("Uncaught Exception:", err);
+});

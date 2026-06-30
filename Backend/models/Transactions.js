@@ -10,7 +10,7 @@ const TransactionSchema = new mongoose.Schema({
     amount: {type: Number, required: [true, 'Transaction amount must be a valid numberical value.']},
 
     // 3. Financial Categorization
-    category: { type: String, enum: {['Food & Dining', 'Transportation', 'Utilities', 'Entertainment', 'Healthcare', 'Shopping', 'Education', 'Travel', 'Other', 'Rent', 'Uncategorized'], 
+    category: { type: String, enum: {values: ['Food & Dining', 'Transportation', 'Utilities', 'Entertainment', 'Healthcare', 'Shopping', 'Education', 'Travel', 'Other', 'Rent', 'Uncategorized'], 
     message: '${Value} is not a supported category.'
     },
     default: 'Uncategorized'},
@@ -23,7 +23,7 @@ const TransactionSchema = new mongoose.Schema({
 });
 
 // Create a compound index on merchant and createdAt to optimize frontend queries later
-TransactionSchema.index({nerchant:1, createdAt: -1});
+TransactionSchema.index({merchant:1, createdAt: -1});
 
-module.exports = mongoose.model('Transaction', TransactionalSchema);
+module.exports = mongoose.model('Transaction', TransactionSchema);
 
