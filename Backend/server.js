@@ -1,15 +1,34 @@
 const express = require("express");
 const cors = require("cors");
+const { rateLimit } = require('express-rate-limit');
 const dotenv = require("dotenv");
 const connectDB = require("./config/db");
-
+const transactionRoutes = require('./routes/transactionRoutes');
+const { errorHandler } = require('./middleware/errorMiddleware');
 dotenv.config({ quiet: true });
 
+// Initialize App
 const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Connect Database
 connectDB();
+
+// Rate Limiter
+// 2. Global Guard: DDOS & API Abuse Rate Limiter
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes window
+  limit: 100, // Limit each IP address to 100 requests per window
+  standardHeaders: 'draft-7', // Return rate limit info in the RateLimit-* headers
+  legacyHeaders: false, // Disable the X-RateLimit-* headers
+  message: {
+    success: false,
+    message: 'Too many requests from this IP. Please try again after 15 minutes.'
+  }
+});
+
+// Apply rate limiter to all API endpoints
+app.use('/api/', apiLimiter);
 
 // Middleware
 app.use(cors());
