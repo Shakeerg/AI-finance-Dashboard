@@ -37,4 +37,11 @@ export const processIncomingSMS = async (rawText) => {
   return response.data;
 };
 
+// frontend/src/services/api.js
+
+export const deleteTransaction = async (id) => {
+  const response = await apiClient.delete(`/transactions/${id}`);
+  return response.data;
+};
+
 export default apiClient;
