@@ -1,7 +1,7 @@
 // backend/config/aiService.js
 const { GoogleGenAI } = require("@google/genai");
+require('dotenv').config();
 
-// Explicitly pass the configuration object to prevent the 'project' undef error
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 const parseSMSWithAi = async (rawText) => {
@@ -12,7 +12,9 @@ const parseSMSWithAi = async (rawText) => {
       Rules:
       1. Extract the numeric transaction 'amount'.
       2. Identify the 'merchant' name (clean it up, e.g., 'Swiggy', 'Zomato', 'Amazon'). If unclear, default to 'Unknown Merchant'.
-      3. Assign a 'category' strictly limited to one of these: ['Food', 'Transport', 'Utilities', 'Rent', 'Shopping', 'Entertainment', 'Uncategorized'].
+      3. CRITICAL: Assign a 'category' strictly limited to one of these allowed database choices: 
+         ['Food & Dining', 'Transportation', 'Utilities', 'Entertainment', 'Healthcare', 'Shopping', 'Education', 'Travel', 'Other', 'Rent', 'Uncategorized']
+         Ensure exact string matching including capital letters and spaces.
       4. Provide a 'confidenceScore' between 0.0 and 1.0 reflecting how confident you are in the parsing accuracy.
     `;
 
@@ -21,7 +23,21 @@ const parseSMSWithAi = async (rawText) => {
       contents: `Parse the raw text: "${rawText}"`,
       config: {
         systemInstruction: systemInstruction,
-        responseMimeType: 'application/json'
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: 'OBJECT',
+          properties: {
+            amount: { type: 'NUMBER' },
+            merchant: { type: 'STRING' },
+            category: { 
+              type: 'STRING', 
+              // These now mirror your Mongoose Schema enums 100% exactly
+              enum: ['Food & Dining', 'Transportation', 'Utilities', 'Entertainment', 'Healthcare', 'Shopping', 'Education', 'Travel', 'Other', 'Rent', 'Uncategorized'] 
+            },
+            confidenceScore: { type: 'NUMBER' }
+          },
+          required: ['amount', 'merchant', 'category', 'confidenceScore']
+        }
       }
     });
 
@@ -38,5 +54,4 @@ const parseSMSWithAi = async (rawText) => {
   }
 };
 
-// Exporting with exact case match
 module.exports = { parseSMSWithAi };
