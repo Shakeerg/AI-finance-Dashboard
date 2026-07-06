@@ -86,7 +86,10 @@ function App() {
           FINA: AI Financial Intelligence
         </h1>
         <p style={{ margin: 0, color: '#94a3b8' }}>
-          Data Feed Status: <span style={{ color: loading ? '#fbbf24' : '#10b981', fontWeight: 'bold' }}>{loading ? 'Connecting...' : 'Active'}</span>
+          Data Feed Status:{' '}
+          <span style={{ color: loading ? '#fbbf24' : '#10b981', fontWeight: 'bold' }}>
+            {loading ? 'Connecting...' : 'Active'}
+          </span>
         </p>
       </header>
 
@@ -177,19 +180,46 @@ function App() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {transactions.map((tx) => (
                 <div key={tx._id} style={{ background: '#1e293b', padding: '16px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  {/* LEFT CONTENT COLUMN: Merchant info and Bank badges */}
                   <div>
-                    <span style={{ fontWeight: 'bold', fontSize: '1.1rem', color: '#fff' }}>{tx.merchant || 'Unknown Merchant'}</span>
+                    <div style={{ fontWeight: 'bold', fontSize: '1.1rem', color: '#fff' }}>
+                      {tx.merchant || 'Unknown Merchant'}
+                    </div>
                     <div style={{ color: '#94a3b8', fontSize: '0.85rem', marginTop: '4px' }}>
-                      Category: <em style={{ color: '#38bdf8' }}>{tx.category}</em> | {new Date(tx.createdAt).toLocaleString('en-IN', {dateStyle: 'medium', timeStyle: 'short'})}
+                      <span style={{ 
+                        background: '#334155', 
+                        color: '#f8fafc', 
+                        padding: '2px 6px', 
+                        borderRadius: '4px', 
+                        fontSize: '0.75rem', 
+                        marginRight: '8px',
+                        fontWeight: '600'
+                      }}>
+                        {tx.bank || 'Unknown Bank'}
+                      </span>
+                      Category: <em style={{ color: '#38bdf8' }}>{tx.category || 'Uncategorized'}</em> | {new Date(tx.createdAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
                     </div>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#f87171' }}>- INR {tx.amount}</div>
+
+                  {/* RIGHT ACTION COLUMN: Financial Metrics and Wipers */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                    <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: tx.type === 'credit' ? '#34d399' : '#f87171' }}>
+                      {tx.type === 'credit' ? '+' : '-'} {tx.currency || 'INR'} {tx.amount}
+                    </div>
+
                     <button
                       onClick={() => handleDelete(tx._id)}
-                      style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '1.1rem', padding: '6px 8px', borderRadius: '4px' }}
-                      onMouseEnter={(e) => (e.target.style.background = '#451a03')}
-                      onMouseLeave={(e) => (e.target.style.background = 'none')}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#ef4444',
+                        cursor: 'pointer',
+                        fontSize: '1.1rem',
+                        padding: '6px 8px',
+                        borderRadius: '4px'
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = '#451a03')}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
                       title="Delete Record"
                     >
                       🗑️
