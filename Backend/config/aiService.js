@@ -16,6 +16,7 @@ const parseSMSWithAi = async (rawText) => {
          ['Food & Dining', 'Transportation', 'Utilities', 'Entertainment', 'Healthcare', 'Shopping', 'Education', 'Travel', 'Other', 'Rent', 'Uncategorized']
          Ensure exact string matching including capital letters and spaces.
       4. Provide a 'confidenceScore' between 0.0 and 1.0 reflecting how confident you are in the parsing accuracy.
+      5. Determine transaction direction ('debit' vs 'credit') and find the matching ISO currency token.
     `;
 
     const response = await ai.models.generateContent({
@@ -31,12 +32,25 @@ const parseSMSWithAi = async (rawText) => {
             merchant: { type: 'STRING' },
             category: { 
               type: 'STRING', 
-              // These now mirror your Mongoose Schema enums 100% exactly
               enum: ['Food & Dining', 'Transportation', 'Utilities', 'Entertainment', 'Healthcare', 'Shopping', 'Education', 'Travel', 'Other', 'Rent', 'Uncategorized'] 
             },
-            confidenceScore: { type: 'NUMBER' }
+            confidenceScore: { type: 'NUMBER' },
+            // MOVED INSIDE THE PROPERTIES BLOCK CORRECTLY
+            type: { 
+              type: 'STRING', 
+              enum: ['debit', 'credit'],
+              description: "Set to 'debit' if it's an expense, withdrawal, or payment. Set to 'credit' if it's a deposit, salary, or refund."
+            },
+            currency: { 
+              type: 'STRING', 
+              description: "The standard ISO currency code extracted from the text, e.g., 'INR', 'USD', 'EUR'. Default to 'INR' if not clear." 
+            },
+            bank: { 
+              type: 'STRING', 
+              description: "The clear short-code or formal name of the bank associated with the transaction, e.g., SBI, HDFC, ICICI. Clean up typos." 
+            }
           },
-          required: ['amount', 'merchant', 'category', 'confidenceScore']
+          required: ['amount', 'merchant', 'category', 'confidenceScore', 'type', 'currency', 'bank'] 
         }
       }
     });
@@ -49,7 +63,10 @@ const parseSMSWithAi = async (rawText) => {
       amount: 0,
       merchant: 'Parsing Failure Fallback',
       category: 'Uncategorized',
-      confidenceScore: 0.0
+      confidenceScore: 0.0,
+      type: 'debit',
+      currency: 'INR',
+      bank: 'Unknown Bank' // Fallback flag
     };
   }
 };

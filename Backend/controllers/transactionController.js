@@ -24,7 +24,10 @@ const createTransaction = async (req, res, next) => {
       amount: aiParsedData.amount || 0,
       merchant: aiParsedData.merchant || "Unknown Merchant",
       category: aiParsedData.category || "Uncategorized",
-      confidenceScore: aiParsedData.confidenceScore || 1.0
+      confidenceScore: aiParsedData.confidenceScore || 1.0,
+      type: aiParsedData.type || "debit",       // Pass parsed flow direction
+      currency: aiParsedData.currency || "INR",   // Pass parsed currency code
+      bank: aiParsedData.bank || "Unknown Bank"
     });
 
     return res.status(201).json({
