@@ -1,7 +1,7 @@
 // frontend/src/App.jsx
 import React, { useState, useEffect } from 'react';
 import { fetchTransactions, processIncomingSMS, deleteTransaction, loginUserApi, registerUserApi } from './services/api';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend } from 'recharts';
 
 function App() {
   // Global Authentication States
@@ -99,11 +99,30 @@ const loadData = async (tokenOverride = null) => {
 
     try {
       setIngesting(true);
-      await processIncomingSMS(smsInput);
+      
+      const smsLines = smsInput
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0);
+
+      if (smsLines.length === 0) return;
+
+      // 🔄 Sequential Queue: Process each SMS line one after the other
+      for (const line of smsLines) {
+        try {
+          await processIncomingSMS(line);
+          // Optional: Add a minor 200ms delay if your rate limits are extremely strict
+          await new Promise(resolve => setTimeout(resolve, 200)); 
+        } catch (singleLineErr) {
+          console.error(`Failed to parse line: "${line}"`, singleLineErr);
+          // Keep looping so one broken SMS line doesn't crash the entire batch run
+        }
+      }
+      
       setSmsInput('');
       await loadData();
     } catch (err) {
-      alert('AI Ingestion Error: ' + (err.response?.data?.message || err.message));
+      alert('AI Batch Ingestion Error: ' + (err.response?.data?.message || err.message));
     } finally {
       setIngesting(false);
     }
@@ -192,7 +211,40 @@ const loadData = async (tokenOverride = null) => {
           Disconnect Console
         </button>
       </header>
+      {/* 📊 FINANCIAL METRICS BANNER CARD ROW */}
+<div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '20px', marginBottom: '30px' }}>
+  
+  {/* Total Inflow Card */}
+  <div style={{ background: '#1e293b', padding: '20px', borderRadius: '12px', borderLeft: '4px solid #34d399', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}>
+    <div style={{ fontSize: '0.85rem', color: '#94a3b8', fontWeight: '600', textTransform: 'uppercase' }}>Total Inflow (Income)</div>
+    <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: '#34d399', marginTop: '6px' }}>
+      INR {transactions.filter(tx => tx.type === 'credit').reduce((acc, tx) => acc + (tx.amount || 0), 0).toLocaleString('en-IN')}
+    </div>
+  </div>
 
+  {/* Total Outflow Card */}
+  <div style={{ background: '#1e293b', padding: '20px', borderRadius: '12px', borderLeft: '4px solid #f87171', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}>
+    <div style={{ fontSize: '0.85rem', color: '#94a3b8', fontWeight: '600', textTransform: 'uppercase' }}>Total Outflow (Expenses)</div>
+    <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: '#f87171', marginTop: '6px' }}>
+      INR {transactions.filter(tx => tx.type === 'debit').reduce((acc, tx) => acc + (tx.amount || 0), 0).toLocaleString('en-IN')}
+    </div>
+  </div>
+
+  {/* Net Savings/Balance Card */}
+  {(() => {
+    const inflow = transactions.filter(tx => tx.type === 'credit').reduce((acc, tx) => acc + (tx.amount || 0), 0);
+    const outflow = transactions.filter(tx => tx.type === 'debit').reduce((acc, tx) => acc + (tx.amount || 0), 0);
+    const net = inflow - outflow;
+    return (
+      <div style={{ background: '#1e293b', padding: '20px', borderRadius: '12px', borderLeft: `4px solid ${net >= 0 ? '#38bdf8' : '#e11d48'}`, boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}>
+        <div style={{ fontSize: '0.85rem', color: '#94a3b8', fontWeight: '600', textTransform: 'uppercase' }}>Net Cash Balance</div>
+        <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: net >= 0 ? '#38bdf8' : '#e11d48', marginTop: '6px' }}>
+          INR {net.toLocaleString('en-IN')}
+        </div>
+      </div>
+    );
+  })()}
+</div>
       {/* Visual Analytics Dashboard Section */}
       {!loading && chartData.length > 0 && (
         <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px', marginBottom: '40px' }}>
@@ -201,17 +253,14 @@ const loadData = async (tokenOverride = null) => {
             <div style={{ width: '100%', height: 220 }}>
               {/* Replace the old BarChart section inside your JSX with this: */}
 <ResponsiveContainer>
-  <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-    <XAxis dataKey="name" stroke="#94a3b8" fontSize={11} tickLine={false} />
-    <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} />
-    <Tooltip 
-      contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '6px' }}
-      itemStyle={{ fontSize: '13px' }}
-    />
-    {/* Stack ID groups them into a single unified column layout per category */}
-    <Bar dataKey="Income" fill="#34d399" stackId="fina_stack" radius={[0, 0, 0, 0]} />
-    <Bar dataKey="Expense" fill="#f87171" stackId="fina_stack" radius={[4, 4, 0, 0]} />
-  </BarChart>
+<BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+  <XAxis dataKey="name" stroke="#94a3b8" fontSize={11} tickLine={false} />
+  <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} />
+  <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '6px' }} />
+  <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
+  <Bar dataKey="Income" fill="#34d399" stackId="fina_stack" />
+  <Bar dataKey="Expense" fill="#f87171" stackId="fina_stack" />
+</BarChart>
 </ResponsiveContainer>
             </div>
           </div>
@@ -256,6 +305,7 @@ const loadData = async (tokenOverride = null) => {
       <hr style={{ border: 'none', height: '1px', backgroundColor: '#334155', margin: '30px 0' }} />
 
       {/* Live Logs List View */}
+      {/* Live Logs List View */}
       <section>
         <h3 style={{ color: '#f1f5f9' }}>Live Transaction Log ({transactions.length})</h3>
 
@@ -266,7 +316,8 @@ const loadData = async (tokenOverride = null) => {
           transactions.length === 0 ? (
             <p style={{ color: '#64748b', textAlign: 'center', marginTop: '20px' }}>No entries logged to your account. Ingest your first bank alert above!</p>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            /* Fixed: Combined scroll container wrapping the active map array cleanly */
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '400px', overflowY: 'auto', paddingRight: '6px' }}>
               {transactions.map((tx) => (
                 <div key={tx._id} style={{ background: '#1e293b', padding: '16px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
