@@ -1,34 +1,87 @@
 // frontend/src/App.jsx
 import React, { useState, useEffect } from 'react';
-import { fetchTransactions, processIncomingSMS, deleteTransaction } from './services/api';
+import { fetchTransactions, processIncomingSMS, deleteTransaction, loginUserApi, registerUserApi } from './services/api';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from 'recharts';
 
 function App() {
+  // Global Authentication States
+  const [token, setToken] = useState(localStorage.getItem('fina_token') || null);
+  const [user, setUser] = useState(JSON.parse(localStorage.getItem('fina_user')) || null);
+  const [isRegistering, setIsRegistering] = useState(false);
+  
+  // Auth Form State Fields
+  const [authName, setAuthName] = useState('');
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+
+  // Dashboard Core States
   const [transactions, setTransactions] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [smsInput, setSmsInput] = useState('');
   const [ingesting, setIngesting] = useState(false);
 
   const COLORS = ['#38bdf8', '#f87171', '#34d399', '#fbbf24', '#a78bfa', '#ec4899', '#64748b'];
 
-  const loadData = async () => {
-    try {
-      setLoading(true);
-      const data = await fetchTransactions();
-      setTransactions(data.transactions || []);
-      setError(null);
-    } catch (err) {
-      console.error('Failed to load transactions:', err);
-      setError(err.message || 'Could not establish server connection.');
-    } finally {
-      setLoading(false);
+  // Replace your loadData function in App.jsx with this:
+const loadData = async (tokenOverride = null) => {
+  const activeToken = tokenOverride || token;
+  if (!activeToken) return; 
+  
+  try {
+    setLoading(true);
+    const data = await fetchTransactions();
+    setTransactions(data.transactions || []);
+    setError(null);
+  } catch (err) {
+    console.error('Failed to load transactions:', err);
+    setError(err.response?.data?.message || err.message || 'Could not establish secure connection.');
+    if (err.response?.status === 401) {
+      handleLogout();
     }
-  };
+  } finally {
+    setLoading(false);
+  }
+};
 
   useEffect(() => {
-    loadData();
-  }, []);
+    if (token) loadData();
+  }, [token]);
+
+  const handleAuthSubmit = async (e) => {
+  e.preventDefault();
+  try {
+    let data;
+    if (isRegistering) {
+      data = await registerUserApi(authName, authEmail, authPassword);
+    } else {
+      data = await loginUserApi(authEmail, authPassword);
+    }
+    
+    localStorage.setItem('fina_token', data.token);
+    localStorage.setItem('fina_user', JSON.stringify(data.user));
+    
+    setToken(data.token);
+    setUser(data.user);
+    
+    setAuthName('');
+    setAuthEmail('');
+    setAuthPassword('');
+
+    // 🔥 Force a clean read with the fresh token immediately
+    await loadData(data.token);
+  } catch (err) {
+    alert('Authentication Failed: ' + (err.response?.data?.message || err.message));
+  }
+};
+
+  const handleLogout = () => {
+    localStorage.removeItem('fina_token');
+    localStorage.removeItem('fina_user');
+    setToken(null);
+    setUser(null);
+    setTransactions([]);
+  };
 
   const handleDelete = async (id) => {
     if (!window.confirm('Are you sure you want to delete this transaction entry?')) return;
@@ -36,7 +89,7 @@ function App() {
       await deleteTransaction(id);
       await loadData();
     } catch (err) {
-      alert('Could not remove entry: ' + (err.message || err));
+      alert('Could not remove entry: ' + (err.response?.data?.message || err.message || err));
     }
   };
 
@@ -58,65 +111,108 @@ function App() {
 
   const getChartData = () => {
     const categories = {};
+    
     transactions.forEach((tx) => {
       const cat = tx.category || 'Uncategorized';
-      categories[cat] = (categories[cat] || 0) + (tx.amount || 0);
+      const amount = tx.amount || 0;
+      
+      if (!categories[cat]) {
+        categories[cat] = { name: cat, Income: 0, Expense: 0, value: 0 };
+      }
+      
+      if (tx.type === 'credit') {
+        categories[cat].Income += amount;
+      } else {
+        categories[cat].Expense += amount;
+      }
+      
+      // Accumulate the volume so the PieChart has a valid metric key to compute slices
+      categories[cat].value += amount;
     });
-    return Object.keys(categories)
-      .map((key) => ({ name: key, value: categories[key] }))
-      .sort((a, b) => b.value - a.value);
+    
+    // Sort array based on the total value size
+    return Object.values(categories).sort((a, b) => b.value - a.value);
   };
 
   const chartData = getChartData();
 
+  // 🚪 GATEWAY: If user doesn't have a token, lock app behind Auth View panel
+  if (!token) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', backgroundColor: '#0f172a', fontFamily: 'system-ui, sans-serif', color: '#e2e8f0' }}>
+        <div style={{ background: '#1e293b', padding: '40px', borderRadius: '12px', width: '100%', maxWidth: '400px', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.3)' }}>
+          <h2 style={{ textAlign: 'center', marginTop: 0, color: '#f8fafc', fontSize: '1.8rem', marginBottom: '8px' }}>FINA Intelligence</h2>
+          <p style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.9rem', marginBottom: '30px' }}>{isRegistering ? 'Create your secure account profile' : 'Sign in to access your financial grid'}</p>
+          
+          <form onSubmit={handleAuthSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {isRegistering && (
+              <input
+                type="text" placeholder="Full Name" value={authName} onChange={(e) => setAuthName(e.target.value)} required
+                style={{ padding: '12px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#0f172a', color: '#fff', fontSize: '0.95rem' }}
+              />
+            )}
+            <input
+              type="email" placeholder="Email Address" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} required
+              style={{ padding: '12px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#0f172a', color: '#fff', fontSize: '0.95rem' }}
+            />
+            <input
+              type="password" placeholder="Password (Min 6 Characters)" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} minLength={6} required
+              style={{ padding: '12px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#0f172a', color: '#fff', fontSize: '0.95rem' }}
+            />
+            
+            <button type="submit" style={{ padding: '12px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', fontSize: '1rem', cursor: 'pointer', marginTop: '10px' }}>
+              {isRegistering ? 'Register & Open Console' : 'Sign In To Gateway'}
+            </button>
+          </form>
+
+          <p style={{ textAlign: 'center', marginTop: '20px', fontSize: '0.85rem', color: '#94a3b8' }}>
+            {isRegistering ? 'Already tracking logs?' : 'New to FINA?'} {' '}
+            <span onClick={() => setIsRegistering(!isRegistering)} style={{ color: '#38bdf8', cursor: 'pointer', fontWeight: '600' }}>
+              {isRegistering ? 'Sign In here' : 'Create an account'}
+            </span>
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // 📈 MAIN APPLICATION VIEW (Rendered only if logged in successfully)
   return (
-    <div
-      style={{
-        padding: '40px 20px',
-        fontFamily: 'system-ui, sans-serif',
-        maxWidth: '900px',
-        margin: '0 auto',
-        color: '#e2e8f0',
-        backgroundColor: '#0f172a',
-        minHeight: '100vh',
-      }}
-    >
-      <header style={{ textAlign: 'center', marginBottom: '40px' }}>
-        <h1 style={{ fontSize: '2.2rem', lineHeight: '1.3', margin: '0 0 10px 0', color: '#f8fafc' }}>
-          FINA: AI Financial Intelligence
-        </h1>
-        <p style={{ margin: 0, color: '#94a3b8' }}>
-          Data Feed Status:{' '}
-          <span style={{ color: loading ? '#fbbf24' : '#10b981', fontWeight: 'bold' }}>
-            {loading ? 'Connecting...' : 'Active'}
-          </span>
-        </p>
+    <div style={{ padding: '40px 20px', fontFamily: 'system-ui, sans-serif', maxWidth: '900px', margin: '0 auto', color: '#e2e8f0', backgroundColor: '#0f172a', minHeight: '100vh' }}>
+      
+      {/* App Header Block */}
+      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '40px', borderBottom: '1px solid #334155', paddingBottom: '20px' }}>
+        <div>
+          <h1 style={{ fontSize: '2.1rem', margin: '0 0 6px 0', color: '#f8fafc' }}>FINA: AI Financial Intelligence</h1>
+          <p style={{ margin: 0, color: '#94a3b8', fontSize: '0.9rem' }}>
+            User Workspace: <strong style={{ color: '#38bdf8' }}>{user?.name}</strong> | Status: <span style={{ color: '#10b981', fontWeight: 'bold' }}>Authenticated</span>
+          </p>
+        </div>
+        <button onClick={handleLogout} style={{ padding: '8px 16px', backgroundColor: 'transparent', border: '1px solid #ef4444', color: '#ef4444', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.85rem', transition: 'all 0.2s' }} onMouseEnter={(e) => {e.target.style.backgroundColor='#ef4444'; e.target.style.color='#fff'}} onMouseLeave={(e) => {e.target.style.backgroundColor='transparent'; e.target.style.color='#ef4444'}}>
+          Disconnect Console
+        </button>
       </header>
 
+      {/* Visual Analytics Dashboard Section */}
       {!loading && chartData.length > 0 && (
-        <section
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
-            gap: '20px',
-            marginBottom: '40px',
-          }}
-        >
+        <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px', marginBottom: '40px' }}>
           <div style={{ background: '#1e293b', padding: '20px', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}>
             <h4 style={{ margin: '0 0 15px 0', color: '#f1f5f9' }}>Spending Overview by Category</h4>
             <div style={{ width: '100%', height: 220 }}>
-              <ResponsiveContainer>
-                <BarChart data={chartData}>
-                  <XAxis dataKey="name" stroke="#94a3b8" fontSize={11} tickLine={false} />
-                  <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} />
-                  <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '6px' }} />
-                  <Bar dataKey="value" fill="#2563eb" radius={[4, 4, 0, 0]}>
-                    {chartData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+              {/* Replace the old BarChart section inside your JSX with this: */}
+<ResponsiveContainer>
+  <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+    <XAxis dataKey="name" stroke="#94a3b8" fontSize={11} tickLine={false} />
+    <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} />
+    <Tooltip 
+      contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '6px' }}
+      itemStyle={{ fontSize: '13px' }}
+    />
+    {/* Stack ID groups them into a single unified column layout per category */}
+    <Bar dataKey="Income" fill="#34d399" stackId="fina_stack" radius={[0, 0, 0, 0]} />
+    <Bar dataKey="Expense" fill="#f87171" stackId="fina_stack" radius={[4, 4, 0, 0]} />
+  </BarChart>
+</ResponsiveContainer>
             </div>
           </div>
 
@@ -138,27 +234,19 @@ function App() {
         </section>
       )}
 
+      {/* Simulator Panel */}
       <section style={{ background: '#1e293b', padding: '20px', borderRadius: '12px', marginBottom: '30px' }}>
         <h3 style={{ marginTop: 0, color: '#f1f5f9' }}>Simulate Incoming Bank SMS Alert</h3>
         <form onSubmit={handleSmsSubmit}>
           <textarea
             value={smsInput}
             onChange={(e) => setSmsInput(e.target.value)}
-            placeholder="Paste raw text message here..."
-            rows="3"
-            style={{
-              width: '100%', padding: '12px', borderRadius: '6px', border: '1px solid #334155',
-              backgroundColor: '#0f172a', color: '#fff', fontSize: '0.95rem', resize: 'vertical', boxSizing: 'border-box'
-            }}
+            placeholder="Paste raw text message here..." rows="3"
+            style={{ width: '100%', padding: '12px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#0f172a', color: '#fff', fontSize: '0.95rem', resize: 'vertical', boxSizing: 'border-box' }}
           />
           <button
-            type="submit"
-            disabled={ingesting || !smsInput.trim()}
-            style={{
-              marginTop: '12px', width: '100%', padding: '10px',
-              backgroundColor: ingesting ? '#475569' : '#2563eb', color: '#fff',
-              border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: smsInput.trim() && !ingesting ? 'pointer' : 'not-allowed'
-            }}
+            type="submit" disabled={ingesting || !smsInput.trim()}
+            style={{ marginTop: '12px', width: '100%', padding: '10px', backgroundColor: ingesting ? '#475569' : '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: smsInput.trim() && !ingesting ? 'pointer' : 'not-allowed' }}
           >
             {ingesting ? 'Gemini AI parsing text...' : 'Send to AI Parser Engine'}
           </button>
@@ -167,41 +255,30 @@ function App() {
 
       <hr style={{ border: 'none', height: '1px', backgroundColor: '#334155', margin: '30px 0' }} />
 
+      {/* Live Logs List View */}
       <section>
         <h3 style={{ color: '#f1f5f9' }}>Live Transaction Log ({transactions.length})</h3>
 
-        {loading && <p style={{ color: '#94a3b8' }}>Querying cluster records...</p>}
+        {loading && <p style={{ color: '#94a3b8' }}>Querying secure user records...</p>}
         {error && <div style={{ color: '#ef4444', padding: '12px', background: '#451a03', borderRadius: '6px' }}>⚠️ Error: {error}</div>}
 
         {!loading && !error && (
           transactions.length === 0 ? (
-            <p style={{ color: '#64748b', textAlign: 'center', marginTop: '20px' }}>No processed entries found. Ingest your first bank SMS alert above!</p>
+            <p style={{ color: '#64748b', textAlign: 'center', marginTop: '20px' }}>No entries logged to your account. Ingest your first bank alert above!</p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {transactions.map((tx) => (
                 <div key={tx._id} style={{ background: '#1e293b', padding: '16px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  {/* LEFT CONTENT COLUMN: Merchant info and Bank badges */}
                   <div>
-                    <div style={{ fontWeight: 'bold', fontSize: '1.1rem', color: '#fff' }}>
-                      {tx.merchant || 'Unknown Merchant'}
-                    </div>
+                    <div style={{ fontWeight: 'bold', fontSize: '1.1rem', color: '#fff' }}>{tx.merchant || 'Unknown Merchant'}</div>
                     <div style={{ color: '#94a3b8', fontSize: '0.85rem', marginTop: '4px' }}>
-                      <span style={{ 
-                        background: '#334155', 
-                        color: '#f8fafc', 
-                        padding: '2px 6px', 
-                        borderRadius: '4px', 
-                        fontSize: '0.75rem', 
-                        marginRight: '8px',
-                        fontWeight: '600'
-                      }}>
+                      <span style={{ background: '#334155', color: '#f8fafc', padding: '2px 6px', borderRadius: '4px', fontSize: '0.75rem', marginRight: '8px', fontWeight: '600' }}>
                         {tx.bank || 'Unknown Bank'}
                       </span>
                       Category: <em style={{ color: '#38bdf8' }}>{tx.category || 'Uncategorized'}</em> | {new Date(tx.createdAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
                     </div>
                   </div>
 
-                  {/* RIGHT ACTION COLUMN: Financial Metrics and Wipers */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
                     <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: tx.type === 'credit' ? '#34d399' : '#f87171' }}>
                       {tx.type === 'credit' ? '+' : '-'} {tx.currency || 'INR'} {tx.amount}
@@ -209,15 +286,7 @@ function App() {
 
                     <button
                       onClick={() => handleDelete(tx._id)}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        color: '#ef4444',
-                        cursor: 'pointer',
-                        fontSize: '1.1rem',
-                        padding: '6px 8px',
-                        borderRadius: '4px'
-                      }}
+                      style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '1.1rem', padding: '6px 8px', borderRadius: '4px' }}
                       onMouseEnter={(e) => (e.currentTarget.style.background = '#451a03')}
                       onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
                       title="Delete Record"

@@ -1,44 +1,64 @@
 // frontend/src/services/api.js
 import axios from 'axios';
 
+const BASE_URL = 'http://localhost:5000/api/v1';
+
 // Create a standardized Axios client worker instance
 const apiClient = axios.create({
-  // Point directly to your local Express server port
-  baseURL: 'http://localhost:5000/api/v1',
-  timeout: 10000, // Terminate request if server takes longer than 10 seconds to respond
+  baseURL: BASE_URL,
+  timeout: 10000, // Terminate request if server takes longer than 10 seconds
   headers: {
-    'Content-Type': 'application/json',
-    // Inject the exact shield key your backend middleware expects
-    'x-api-key': 'FinaSecureShieldKey_2026_S'
+    'Content-Type': 'application/json'
   }
 });
 
-/**
- * Service call to fetch the chronologically sorted transaction feed
- */
+// Dynamic JWT Interceptor: Automatically injects bearer token on every single request
+apiClient.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem("fina_token");
+
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+
+    config.headers["x-api-key"] = "FinaSecureShieldKey_2026_S";
+
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
+// 🔐 User Login Request
+export const loginUserApi = async (email, password) => {
+  const response = await apiClient.post('/auth/login', { email, password });
+  return response.data; // Returns token and user object payloads
+};
+
+// 🔐 User Registration Request
+export const registerUserApi = async (name, email, password) => {
+  const response = await apiClient.post('/auth/register', { name, email, password });
+  return response.data;
+};
+
+// 📥 Fetch Transactions (Secure & Multi-tenant)
 export const fetchTransactions = async () => {
   const response = await apiClient.get('/transactions');
   return response.data;
 };
 
-/**
- * Service call to fetch the category aggregation spending summaries
- */
+// 📊 Fetch Category Aggregations / Financial Stats
 export const fetchTransactionStats = async () => {
   const response = await apiClient.get('/transactions/stats');
   return response.data;
 };
 
-/**
- * Service call to ingest a fresh raw SMS alert text string to the AI engine
- */
+// 📤 Ingest Bank SMS Alert (Secure & Managed via AI)
 export const processIncomingSMS = async (rawText) => {
   const response = await apiClient.post('/transactions', { rawText });
   return response.data;
 };
 
-// frontend/src/services/api.js
-
+// 🗑️ Delete Transaction Record (Securely owned validation check)
 export const deleteTransaction = async (id) => {
   const response = await apiClient.delete(`/transactions/${id}`);
   return response.data;

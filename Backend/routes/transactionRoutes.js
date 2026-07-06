@@ -1,24 +1,29 @@
 const express = require("express");
-
 const router = express.Router();
 
 const {
-createTransaction, getTransactions, getTransactionStats
-, deleteTransaction} = require("../controllers/transactionController");
-const {protectRoute} = require("../middleware/authMiddleware");
+  createTransaction,
+  getTransactions,
+  getTransactionStats,
+  deleteTransaction,
+} = require("../controllers/transactionController");
 
-// Route mapping for /api/v1/transactions
+const { protect } = require("../middleware/authMiddleware");
 
-router.route('/')
-.post(protectRoute, createTransaction)
-.get(protectRoute, getTransactions);
+// Every transaction route requires a valid JWT
+router.use(protect);
 
-// Special metrics sub-route: /api/v1/transactions/stats
+router
+  .route("/")
+  .post(createTransaction)
+  .get(getTransactions);
 
-router.route('/stats').get(protectRoute, getTransactionStats);
+router
+  .route("/stats")
+  .get(getTransactionStats);
 
-// Route for deleting a specific transaction
-
-router.route('/:id').delete(protectRoute, deleteTransaction);
+router
+  .route("/:id")
+  .delete(deleteTransaction);
 
 module.exports = router;

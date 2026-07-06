@@ -1,9 +1,15 @@
 const mongoose = require('mongoose');
 
 const TransactionSchema = new mongoose.Schema({
+  user: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        required: true
+    },
+    
     // 1. The Raw Incoming Data
     rawText: { type: String, required: [true, 'Raw SMS text is required for auditing purposes'] },
-
+    
 
     // 2. Extracted Data Points (Filled by the AI Agent later)
     merchant: {type: String, default: 'Unknown', trim: true},
