@@ -27,8 +27,8 @@ const apiLimiter = rateLimit({
   }
 });
 
-// Apply rate limiter to all API endpoints
-app.use('/api/', apiLimiter);
+// Apply rate limiting specifically to data extraction tracks instead of global auth paths
+app.use('/api/v1/transactions', apiLimiter);
 
 // Middleware
 app.use(cors());
@@ -44,6 +44,7 @@ app.get("/health", (req, res) => {
 
 // Routes
 app.use("/api/v1/transactions", require("./routes/transactionRoutes"));
+app.use('/api/v1/auth', require('./routes/authRoutes'));
 
 // Global Error Handler
 app.use((err, req, res, next) => {
