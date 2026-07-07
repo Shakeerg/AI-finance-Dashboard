@@ -9,7 +9,7 @@ const { rateLimit } = require("express-rate-limit");
 const connectDB = require("./config/db");
 
 // Load Environment Variables
-dotenv.config({ quiet: true });
+dotenv.config({ quiet: true, override: false });
 
 // Validate Required Environment Variables
 require("./config/env");
