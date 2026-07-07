@@ -1,11 +1,12 @@
-// frontend/src/services/api.js
 import axios from 'axios';
 
-const BASE_URL = 'https://ai-finance-dashboard-v2t6.onrender.com';
+// 🟢 FIX: Append /api/v1 to route matching namespaces
+const BASE_URL = 'https://ai-finance-dashboard-v2t6.onrender.com/api/v1';
+
 // Create a standardized Axios client worker instance
 const apiClient = axios.create({
   baseURL: BASE_URL,
-  timeout: 10000, // Terminate request if server takes longer than 10 seconds
+  timeout: 10000, 
   headers: {
     'Content-Type': 'application/json'
   }
@@ -24,10 +25,12 @@ apiClient.interceptors.request.use(
   },
   (error) => Promise.reject(error)
 );
+
 // 🔐 User Login Request
 export const loginUserApi = async (email, password) => {
+  // 🟢 Hits: BASE_URL + /auth/login -> https://ai-finance-dashboard-v2t6.onrender.com/api/v1/auth/login
   const response = await apiClient.post('/auth/login', { email, password });
-  return response.data; // Returns token and user object payloads
+  return response.data; 
 };
 
 // 🔐 User Registration Request
