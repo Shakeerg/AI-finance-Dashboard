@@ -4,8 +4,8 @@ const jwt = require("jsonwebtoken");
 const generateToken = (id) => {
   return jwt.sign(
     { id },
-    process.env.JWT_SECRET || "fina_fallback_secret_key_123",
-    { expiresIn: "30d" }
+    process.env.JWT_SECRET, // Clean out the insecure hardcoded fallback string for production
+    { expiresIn: "7d" } // Production target timeline
   );
 };
 

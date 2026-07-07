@@ -72,5 +72,5 @@ console.log("EXPECTED:", process.env.FINA_INTERNAL_API_KEY);
 };
 
 module.exports = {
-  protect,
+  protect,protectRoute
 };

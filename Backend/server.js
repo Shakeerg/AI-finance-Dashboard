@@ -1,79 +1,181 @@
 const express = require("express");
 const cors = require("cors");
-const { rateLimit } = require('express-rate-limit');
 const dotenv = require("dotenv");
-const connectDB = require("./config/db");
-const transactionRoutes = require('./routes/transactionRoutes');
-const { errorHandler } = require('./middleware/errorMiddleware');
-dotenv.config({ quiet: true });
-console.log("Gemini Key Loaded:", !!process.env.GEMINI_API_KEY);
-// Initialize App
-const app = express();
-const PORT = process.env.PORT || 5000;
+const helmet = require("helmet");
+const hpp = require("hpp");
+const compression = require("compression");
+const { rateLimit } = require("express-rate-limit");
 
-// Connect Database
+const connectDB = require("./config/db");
+
+// Load Environment Variables
+dotenv.config({ quiet: true });
+
+// Validate Required Environment Variables
+require("./config/env");
+
+// Initialize Express
+const app = express();
+const PORT = process.env.PORT || 5001;
+
+// Connect MongoDB
 connectDB();
 
-// Rate Limiter
-// 2. Global Guard: DDOS & API Abuse Rate Limiter
-const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes window
-  limit: 100, // Limit each IP address to 100 requests per window
-  standardHeaders: 'draft-7', // Return rate limit info in the RateLimit-* headers
-  legacyHeaders: false, // Disable the X-RateLimit-* headers
+/* ==========================================================
+   SECURITY MIDDLEWARE
+========================================================== */
+
+app.disable("x-powered-by");
+
+app.use(
+  helmet({
+    crossOriginResourcePolicy: false,
+    contentSecurityPolicy: false,
+  })
+);
+
+app.use(compression());
+
+app.set("trust proxy", 1);
+
+/* ==========================================================
+   HTTPS REDIRECT (Production Only)
+========================================================== */
+
+app.use((req, res, next) => {
+  if (
+    process.env.NODE_ENV === "production" &&
+    req.headers["x-forwarded-proto"] !== "https"
+  ) {
+    return res.redirect(`https://${req.headers.host}${req.originalUrl}`);
+  }
+
+  next();
+});
+
+/* ==========================================================
+   CORS
+========================================================== */
+
+app.use(
+  cors({
+    origin: process.env.CLIENT_URL || "http://localhost:5173",
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
+
+/* ==========================================================
+   BODY PARSER + SANITIZATION
+========================================================== */
+
+app.use(express.json({ limit: "10kb" }));
+app.use(hpp());
+
+/* ==========================================================
+   HEALTH CHECK
+========================================================== */
+
+app.get("/health", (req, res) => {
+  res.status(200).json({
+    success: true,
+    status: "healthy",
+    timestamp: new Date(),
+  });
+});
+
+/* ==========================================================
+   RATE LIMITERS
+========================================================== */
+
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 100,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
   message: {
     success: false,
-    message: 'Too many requests from this IP. Please try again after 15 minutes.'
+    message: "Too many requests. Please try again later.",
+  },
+});
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message:
+      "Too many login attempts. Please try again after 15 minutes.",
+  },
+});
+
+/* ==========================================================
+   ROUTES
+========================================================== */
+
+app.use(
+  "/api/v1/transactions",
+  generalLimiter,
+  require("./routes/transactionRoutes")
+);
+
+app.use("/api/v1/auth/login", authLimiter);
+
+app.use("/api/v1/auth", require("./routes/authRoutes"));
+
+/* ==========================================================
+   GLOBAL ERROR HANDLER
+========================================================== */
+
+app.use((err, req, res, next) => {
+  if (process.env.NODE_ENV === "development") {
+    console.error(err);
+  }
+
+  res.status(err.status || 500).json({
+    success: false,
+    message:
+      process.env.NODE_ENV === "production"
+        ? "Internal Server Error"
+        : err.message,
+    ...(process.env.NODE_ENV === "development" && {
+      stack: err.stack,
+    }),
+  });
+});
+
+/* ==========================================================
+   START SERVER
+========================================================== */
+
+const server = app.listen(PORT, "0.0.0.0", () => {
+  if (process.env.NODE_ENV === "development") {
+    console.log(` Server running on http://localhost:${PORT}`);
+  } else {
+    console.log("Server started successfully.");
   }
 });
 
-// Apply rate limiting specifically to data extraction tracks instead of global auth paths
-app.use('/api/v1/transactions', apiLimiter);
+/* ==========================================================
+   PROCESS ERROR HANDLING
+========================================================== */
 
-// Middleware
-app.use(cors());
-app.use(express.json());
-
-// Health Route
-app.get("/health", (req, res) => {
-    res.status(200).json({
-        status: "healthy",
-        timestamp: new Date()
-    });
-});
-
-// Routes
-app.use("/api/v1/transactions", require("./routes/transactionRoutes"));
-app.use('/api/v1/auth', require('./routes/authRoutes'));
-
-// Global Error Handler
-app.use((err, req, res, next) => {
-    console.error(err.stack);
-
-    res.status(500).json({
-        success: false,
-        message: err.message || "Internal Server Error"
-    });
-});
-
-// Start Server
-const server = app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Listening on http://0.0.0.0:${PORT}`);
-});
-
-server.on("listening", () => {
-    console.log("Server is now listening.");
-});
-
-server.on("error", (err) => {
-    console.error("Listen Error:", err);
-});
-
-// Catch unexpected errors
 process.on("unhandledRejection", (err) => {
-    console.error("Unhandled Rejection:", err);
+  console.error("Unhandled Rejection:", err);
 });
 
 process.on("uncaughtException", (err) => {
-    console.error("Uncaught Exception:", err);
+  console.error("Uncaught Exception:", err);
+  process.exit(1);
+});
+
+process.on("SIGTERM", () => {
+  console.log("SIGTERM received. Shutting down gracefully...");
+  server.close(() => {
+    console.log("Server closed.");
+    process.exit(0);
+  });
 });

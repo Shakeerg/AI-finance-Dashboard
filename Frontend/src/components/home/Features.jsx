@@ -34,9 +34,7 @@ export default function Features() {
   ];
 
   return (
-
     <section id="features" className="section">
-
       <div className="container">
 
         <p className="eyebrow">
@@ -49,14 +47,13 @@ export default function Features() {
 
         <div className="feature-grid">
 
-          {features.map((item,index)=>(
-
+          {features.map((item, index) => (
             <div
+              key={index} /* 👈 Added the unique key prop here to fix the console warning */
               className="feature-card"
               data-aos="fade-up"
-              data-aos-delay={index*120}
-              >
-
+              data-aos-delay={index * 120}
+            >
               <div className="feature-icon">
                 {item.icon}
               </div>
@@ -68,17 +65,11 @@ export default function Features() {
               <p>
                 {item.desc}
               </p>
-
             </div>
-
           ))}
 
         </div>
-
       </div>
-
     </section>
-
   );
-
 }
