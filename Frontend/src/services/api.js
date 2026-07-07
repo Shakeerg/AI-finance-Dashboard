@@ -1,8 +1,7 @@
 // frontend/src/services/api.js
 import axios from 'axios';
 
-const BASE_URL = 'http://localhost:5000/api/v1';
-
+const BASE_URL = 'http://localhost:5001/api/v1';
 // Create a standardized Axios client worker instance
 const apiClient = axios.create({
   baseURL: BASE_URL,
@@ -21,13 +20,10 @@ apiClient.interceptors.request.use(
       config.headers.Authorization = `Bearer ${token}`;
     }
 
-    config.headers["x-api-key"] = "FinaSecureShieldKey_2026_S";
-
     return config;
   },
   (error) => Promise.reject(error)
 );
-
 // 🔐 User Login Request
 export const loginUserApi = async (email, password) => {
   const response = await apiClient.post('/auth/login', { email, password });
