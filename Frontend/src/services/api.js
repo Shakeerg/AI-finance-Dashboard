@@ -2,7 +2,6 @@ import axios from 'axios';
 
 // 🟢 FIX: Append /api/v1 to route matching namespaces
 const BASE_URL = 'https://ai-finance-dashboard-v2t6.onrender.com/api/v1';
-
 // Create a standardized Axios client worker instance
 const apiClient = axios.create({
   baseURL: BASE_URL,
