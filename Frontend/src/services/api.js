@@ -1,7 +1,7 @@
 // frontend/src/services/api.js
 import axios from 'axios';
 
-const BASE_URL = 'http://localhost:5001/api/v1';
+const BASE_URL = 'https://ai-finance-dashboard-v2t6.onrender.com';
 // Create a standardized Axios client worker instance
 const apiClient = axios.create({
   baseURL: BASE_URL,
