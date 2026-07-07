@@ -57,15 +57,34 @@ app.use((req, res, next) => {
    CORS
 ========================================================== */
 
+/* ==========================================================
+   CORS (Dynamic Pattern Matching)
+========================================================== */
+
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || "http://localhost:5173",
+    origin: (origin, callback) => {
+      // Allow local development configurations
+      if (!origin || origin.startsWith("http://localhost")) {
+        return callback(null, true);
+      }
+
+      // 🟢 Allow production domain OR any dynamic preview branch domains from your project
+      if (
+        origin === "https://finaai-mu.vercel.app" || 
+        origin.endsWith(".vercel.app")
+      ) {
+        return callback(null, true);
+      }
+
+      // Deny any random unauthorized origins
+      return callback(new Error("Not allowed by CORS"));
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "x-api-key"],
   })
 );
-
 /* ==========================================================
    BODY PARSER + SANITIZATION
 ========================================================== */
