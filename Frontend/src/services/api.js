@@ -5,10 +5,8 @@ const BASE_URL = 'https://ai-finance-dashboard-v2t6.onrender.com/api/v1';
 // Create a standardized Axios client worker instance
 const apiClient = axios.create({
   baseURL: BASE_URL,
-  timeout: 10000, 
-  headers: {
-    'Content-Type': 'application/json'
-  }
+  timeout: 60000, // give Render's cold start room to breathe
+  headers: { 'Content-Type': 'application/json' }
 });
 
 // Dynamic JWT Interceptor: Automatically injects bearer token on every single request

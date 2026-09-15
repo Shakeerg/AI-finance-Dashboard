@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { loginUserApi } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -47,6 +47,8 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [slowNotice, setSlowNotice] = useState(false); // 🟢 NEW: cold-start message flag
+  const slowTimerRef = useRef(null); // 🟢 NEW: tracks the delayed-message timer
 
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -57,6 +59,11 @@ export default function Login() {
 
     try {
       setLoading(true);
+      setSlowNotice(false);
+
+      // 🟢 NEW: show a "waking up server" message if the request takes longer than 4s
+      slowTimerRef.current = setTimeout(() => setSlowNotice(true), 4000);
+
       // 1. Hit the login API endpoint
       const data = await loginUserApi(email, password);
 
@@ -70,7 +77,9 @@ export default function Login() {
     } catch (err) {
       alert('Sign in failed: ' + (err.response?.data?.message || err.message));
     } finally {
+      clearTimeout(slowTimerRef.current); // 🟢 NEW
       setLoading(false);
+      setSlowNotice(false); // 🟢 NEW
     }
   };
 
@@ -132,6 +141,15 @@ export default function Login() {
           >
             {loading ? 'Signing in…' : 'Sign in →'}
           </button>
+
+          {/* 🟢 NEW: cold-start notice, only appears if request is taking a while */}
+          {loading && (
+            <p style={styles.slowNotice}>
+              {slowNotice
+                ? 'Waking up the server… this can take up to a minute on first load.'
+                : 'Signing in…'}
+            </p>
+          )}
         </form>
 
         <p style={styles.footerText}>
@@ -215,6 +233,13 @@ const styles = {
   button: {
     marginTop: 6, padding: '13px', color: colors.paper, border: 'none',
     borderRadius: 6, fontWeight: 500, fontSize: 14.5, transition: 'background .15s',
+  },
+  slowNotice: { // 🟢 NEW
+    textAlign: 'center',
+    marginTop: 4,
+    fontSize: 12.5,
+    color: colors.inkSoft,
+    fontStyle: 'italic',
   },
   footerText: {
     textAlign: 'center', marginTop: 24, fontSize: 13.5, color: colors.inkSoft,
