@@ -1,10 +1,8 @@
 // backend/middleware/authMiddleware.js
-const jwt = require('jsonwebtoken');
-const User = require('../models/User'); // FIXED: 'moodels' -> 'models'
+const jwt = require("jsonwebtoken");
+const User = require("../models/User");
 
 const protect = async (req, res, next) => {
-  console.log("Authorization Header:", req.headers.authorization);
-
   let token;
 
   if (
@@ -12,65 +10,75 @@ const protect = async (req, res, next) => {
     req.headers.authorization.startsWith("Bearer")
   ) {
     try {
-      token = req.headers.authorization.split(" ")[1];
+      // Extract token and strip potential surrounding whitespace or quotes
+      token = req.headers.authorization.split(" ")[1]?.trim();
 
-      console.log("JWT:", token);
+      if (token && token.startsWith('"') && token.endsWith('"')) {
+        token = token.slice(1, -1);
+      }
+
+      if (!token) {
+        return res.status(401).json({
+          success: false,
+          message: "Not authorized, token missing from Bearer header",
+        });
+      }
 
       const decoded = jwt.verify(
         token,
         process.env.JWT_SECRET || "fina_fallback_secret_key_123"
       );
 
-      console.log("Decoded:", decoded);
+      req.user = await User.findById(decoded.id).select("-password");
 
-      req.user = await User.findById(decoded.id);
+      if (!req.user) {
+        return res.status(401).json({
+          success: false,
+          message: "User account no longer exists",
+        });
+      }
 
-      console.log("User:", req.user);
-
-      next();
+      return next(); // Return here prevents fall-through to the (!token) check
     } catch (err) {
-      console.log(err);
+      console.error("JWT Verification Error:", err.message);
       return res.status(401).json({
         success: false,
-        message: "Token invalid",
+        message: "Token invalid or expired",
       });
     }
   }
 
-  if (!token) {
-    return res.status(401).json({
-      success: false,
-      message: "No token",
-    });
-  }
+  return res.status(401).json({
+    success: false,
+    message: "Access Denied: No Bearer token provided",
+  });
 };
 
 const protectRoute = (req, res, next) => {
-  console.log("API KEY:", req.headers["x-api-key"]);
-console.log("EXPECTED:", process.env.FINA_INTERNAL_API_KEY);
   try {
     const clientApiKey = req.headers["x-api-key"];
 
     if (!clientApiKey) {
       return res.status(401).json({
         success: false,
-        message: "Access Denied: No API key provided."
+        message: "Access Denied: No API key provided",
       });
     }
 
     if (clientApiKey !== process.env.FINA_INTERNAL_API_KEY) {
       return res.status(403).json({
         success: false,
-        message: "Access Denied: Invalid API key."
+        message: "Access Denied: Invalid API key",
       });
     }
 
-    next();
+    return next();
   } catch (error) {
     next(error);
   }
 };
 
 module.exports = {
-  protect,protectRoute
+  protect,
+  protectRoute,
 };

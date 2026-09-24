@@ -5,7 +5,7 @@ const helmet = require("helmet");
 const hpp = require("hpp");
 const compression = require("compression");
 const { rateLimit } = require("express-rate-limit");
-
+const workers = require("./workers/transactionWorker");
 const connectDB = require("./config/db");
 
 // Load Environment Variables

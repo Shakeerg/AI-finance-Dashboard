@@ -2,28 +2,31 @@ const express = require("express");
 const router = express.Router();
 
 const {
-  createTransaction,
   getTransactions,
-  getTransactionStats,
+  createManualTransaction,
+  updateTransaction,
   deleteTransaction,
+  getTransactionStats,
 } = require("../controllers/transactionController");
 
+const { ingestNotification } = require("../controllers/ingestController");
 const { protect } = require("../middleware/authMiddleware");
 
-// Every transaction route requires a valid JWT
+// All routes below are protected
 router.use(protect);
 
-router
-  .route("/")
-  .post(createTransaction)
-  .get(getTransactions);
+// Specialized endpoints
+router.post("/ingest", ingestNotification);
+router.post("/manual", createManualTransaction);
+router.get("/stats", getTransactionStats);
 
-router
-  .route("/stats")
-  .get(getTransactionStats);
+// General resource collection routes
+router.route("/").get(getTransactions);
 
+// Resource item instance routes
 router
   .route("/:id")
+  .put(updateTransaction)
   .delete(deleteTransaction);
 
 module.exports = router;

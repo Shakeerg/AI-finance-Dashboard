@@ -1,71 +1,86 @@
 import React, { useState, useEffect } from 'react';
-import { fetchTransactions, processIncomingSMS, deleteTransaction } from '../services/api';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend } from 'recharts';
+import { 
+  fetchTransactions, 
+  processIncomingSMS, 
+  deleteTransaction, 
+  createManualTransaction, 
+  updateTransaction 
+} from '../services/api';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { useAuth } from '../context/AuthContext';
+
+// Import Modular Components
+import DashboardHeader from '../components/dashboard/DashboardHeader';
+import MetricsCards from '../components/dashboard/MetricsCards';
+import SmsSimulator from '../components/dashboard/SmsSimulator';
+import TransactionList from '../components/dashboard/TransactionList';
+import TransactionModal from '../components/dashboard/TransactionModal';
 
 const colors = {
   paper: '#F5F1E8',
   paperRaised: '#FBF8F1',
-  paperGlass: 'rgba(251,248,241,0.6)',
+  paperGlass: 'rgba(251,248,241,0.7)',
   ink: '#1C1B17',
   inkSoft: '#5B584E',
   rule: '#DCD5C4',
   emerald: '#1F5D45',
-  emeraldSoft: '#E6EEE7',
   amber: '#B5772C',
-  amberSoft: '#F4E9D8',
   red: '#9A3B2E',
-  redSoft: '#F5E6E2',
 };
 
 const fonts = {
   serif: "'Fraunces', Georgia, serif",
   sans: "'IBM Plex Sans', system-ui, sans-serif",
-  mono: "'IBM Plex Mono', 'Courier New', monospace",
 };
 
 const glassCard = {
   background: colors.paperGlass,
-  backdropFilter: 'blur(14px) saturate(140%)',
-  WebkitBackdropFilter: 'blur(14px) saturate(140%)',
-  border: '1px solid rgba(255,255,255,0.5)',
-  borderRadius: '12px',
-  boxShadow: '0 16px 34px -20px rgba(28,27,23,0.25), inset 0 1px 0 rgba(255,255,255,0.55)',
+  backdropFilter: 'blur(16px) saturate(140%)',
+  WebkitBackdropFilter: 'blur(16px) saturate(140%)',
+  border: '1px solid rgba(255,255,255,0.6)',
+  borderRadius: '14px',
+  boxShadow: '0 12px 30px -15px rgba(28,27,23,0.15)',
 };
 
 export default function Dashboard() {
-  useEffect(() => {
-    const id = 'fina-fonts';
-    if (document.getElementById(id)) return;
-    const link = document.createElement('link');
-    link.id = id;
-    link.rel = 'stylesheet';
-    link.href = 'https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap';
-    document.head.appendChild(link);
-  }, []);
-
   const { user, logout } = useAuth();
-  // Core Local Dashboard States
+  
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [smsInput, setSmsInput] = useState('');
   const [ingesting, setIngesting] = useState(false);
 
-  const CHART_COLORS = [colors.emerald, colors.amber, colors.red, '#4A6FA5', '#7A5C8E', '#6B7A3F', colors.inkSoft];
+  // Filter States
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
 
-  const loadData = async () => {
+  // Modal Control States
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingTx, setEditingTx] = useState(null);
+  const [modalLoading, setModalLoading] = useState(false);
+
+  // Inject Web Fonts dynamically
+  useEffect(() => {
+    const id = 'fina-fonts';
+    if (document.getElementById(id)) return;
+    const link = document.createElement('link');
+    link.id = id;
+    link.rel = 'stylesheet';
+    link.href = 'https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap';
+    document.head.appendChild(link);
+  }, []);
+
+  const loadData = async (start = startDate, end = endDate) => {
     try {
       setLoading(true);
-      const data = await fetchTransactions();
+      const data = await fetchTransactions(1, 100, start || null, end || null);
       setTransactions(data.transactions || []);
       setError(null);
     } catch (err) {
       console.error('Failed to load transactions:', err);
-      setError(err.response?.data?.message || err.message || 'Could not establish secure connection.');
-      if (err.response?.status === 401) {
-        logout();
-      }
+      setError(err.response?.data?.message || err.message || 'Could not establish connection.');
+      if (err.response?.status === 401) logout();
     } finally {
       setLoading(false);
     }
@@ -75,13 +90,53 @@ export default function Dashboard() {
     loadData();
   }, []);
 
+  // Filter Handlers
+  const handleApplyFilter = (e) => {
+    e.preventDefault();
+    loadData(startDate, endDate);
+  };
+
+  const handleClearFilter = () => {
+    setStartDate('');
+    setEndDate('');
+    loadData('', '');
+  };
+
+  // Modal Handlers
+  const handleOpenCreateModal = () => {
+    setEditingTx(null);
+    setIsModalOpen(true);
+  };
+
+  const handleOpenEditModal = (tx) => {
+    setEditingTx(tx);
+    setIsModalOpen(true);
+  };
+
+  const handleModalSubmit = async (formData) => {
+    setModalLoading(true);
+    try {
+      if (editingTx) {
+        await updateTransaction(editingTx._id, formData);
+      } else {
+        await createManualTransaction(formData);
+      }
+      setIsModalOpen(false);
+      await loadData(); // Keeps list and date range filters strictly synchronized
+    } catch (err) {
+      alert('Action failed: ' + (err.response?.data?.message || err.message));
+    } finally {
+      setModalLoading(false);
+    }
+  };
+
   const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this transaction entry?')) return;
+    if (!window.confirm('Are you sure you want to delete this record?')) return;
     try {
       await deleteTransaction(id);
       await loadData();
     } catch (err) {
-      alert('Could not remove entry: ' + (err.response?.data?.message || err.message || err));
+      alert('Could not remove entry: ' + (err.response?.data?.message || err.message));
     }
   };
 
@@ -96,15 +151,12 @@ export default function Dashboard() {
         .map(line => line.trim())
         .filter(line => line.length > 0);
 
-      if (smsLines.length === 0) return;
-
-      // Sequential queue
       for (const line of smsLines) {
         try {
           await processIncomingSMS(line);
           await new Promise(resolve => setTimeout(resolve, 200));
-        } catch (singleLineErr) {
-          console.error(`Failed to parse line: "${line}"`, singleLineErr);
+        } catch (err) {
+          console.error(`Failed to parse: "${line}"`, err);
         }
       }
 
@@ -122,19 +174,14 @@ export default function Dashboard() {
     transactions.forEach((tx) => {
       const cat = tx.category || 'Uncategorized';
       const amount = tx.amount || 0;
-
-      if (!categories[cat]) {
-        categories[cat] = { name: cat, Income: 0, Expense: 0, value: 0 };
-      }
-
-      if (tx.type === 'credit') {
-        categories[cat].Income += amount;
-      } else {
+      if (!categories[cat]) categories[cat] = { name: cat, Expense: 0, value: 0 };
+      
+      if (tx.type !== 'credit') {
         categories[cat].Expense += amount;
+        categories[cat].value += amount;
       }
-      categories[cat].value += amount;
     });
-    return Object.values(categories).sort((a, b) => b.value - a.value);
+    return Object.values(categories).filter(c => c.value > 0).sort((a, b) => b.value - a.value);
   };
 
   const chartData = getChartData();
@@ -148,166 +195,105 @@ export default function Dashboard() {
       <div style={styles.glow2} />
       <div style={styles.wrap}>
 
-        {/* Header */}
-        <header style={styles.header}>
-          <div>
-            <div style={styles.brand}><span style={styles.brandDot} />FINA AI</div>
-            <p style={styles.headerSub}>
-              {user?.name || 'User'} · <span style={{ color: colors.emerald, fontWeight: 600 }}>Connected</span>
-            </p>
-          </div>
-          <button
-            onClick={logout}
-            style={styles.logoutBtn}
-            onMouseEnter={(e) => { e.currentTarget.style.background = colors.red; e.currentTarget.style.color = colors.paper; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = colors.red; }}
-          >
-            Sign out
+        {/* Dashboard Header */}
+        <DashboardHeader user={user} onLogout={logout} />
+
+        {/* Action Toolbar: Manual Creation & Date Range Filters */}
+        <div style={styles.actionToolbar}>
+          <button style={styles.addBtn} onClick={handleOpenCreateModal}>
+            + Add Manual Entry
           </button>
-        </header>
 
-        {/* Metrics row */}
-        <div style={styles.metricsGrid}>
-          <div style={{ ...glassCard, ...styles.metricCard, borderLeft: `3px solid ${colors.emerald}` }}>
-            <div style={styles.metricLabel}>Total inflow</div>
-            <div style={{ ...styles.metricValue, color: colors.emerald }}>
-              ₹{inflow.toLocaleString('en-IN')}
-            </div>
-          </div>
-
-          <div style={{ ...glassCard, ...styles.metricCard, borderLeft: `3px solid ${colors.red}` }}>
-            <div style={styles.metricLabel}>Total outflow</div>
-            <div style={{ ...styles.metricValue, color: colors.red }}>
-              ₹{outflow.toLocaleString('en-IN')}
-            </div>
-          </div>
-
-          <div style={{ ...glassCard, ...styles.metricCard, borderLeft: `3px solid ${net >= 0 ? colors.emerald : colors.red}` }}>
-            <div style={styles.metricLabel}>Net balance</div>
-            <div style={{ ...styles.metricValue, color: net >= 0 ? colors.emerald : colors.red }}>
-              ₹{net.toLocaleString('en-IN')}
-            </div>
-          </div>
+          <form onSubmit={handleApplyFilter} style={styles.filterForm}>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              style={styles.dateInput}
+              aria-label="Start Date"
+            />
+            <span style={styles.dateSeparator}>to</span>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              style={styles.dateInput}
+              aria-label="End Date"
+            />
+            <button type="submit" style={styles.filterBtn}>
+              Filter
+            </button>
+            {(startDate || endDate) && (
+              <button type="button" onClick={handleClearFilter} style={styles.clearBtn}>
+                Clear
+              </button>
+            )}
+          </form>
         </div>
 
-        {/* Charts */}
-        {!loading && chartData.length > 0 && (
-          <section style={styles.chartGrid}>
-            <div style={{ ...glassCard, ...styles.chartCard }}>
-              <h4 style={styles.cardTitle}>Spending by category</h4>
-              <div style={{ width: '100%', height: 220 }}>
-                <ResponsiveContainer>
-                  <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                    <XAxis dataKey="name" stroke={colors.inkSoft} fontSize={11} tickLine={false} />
-                    <YAxis stroke={colors.inkSoft} fontSize={11} tickLine={false} />
-                    <Tooltip contentStyle={{ backgroundColor: colors.paperRaised, border: `1px solid ${colors.rule}`, borderRadius: '6px', fontFamily: fonts.sans }} />
-                    <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: '12px', paddingTop: '10px', fontFamily: fonts.sans }} />
-                    <Bar dataKey="Income" fill={colors.emerald} stackId="fina_stack" radius={[3, 3, 0, 0]} />
-                    <Bar dataKey="Expense" fill={colors.red} stackId="fina_stack" radius={[3, 3, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
+        {/* Summary Metrics */}
+        <MetricsCards inflow={inflow} outflow={outflow} net={net} />
 
-            <div style={{ ...glassCard, ...styles.chartCard }}>
-              <h4 style={styles.cardTitle}>Distribution share</h4>
-              <div style={{ width: '100%', height: 220 }}>
-                <ResponsiveContainer>
-                  <PieChart>
-                    <Pie data={chartData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={4}>
-                      {chartData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip contentStyle={{ backgroundColor: colors.paperRaised, border: `1px solid ${colors.rule}`, borderRadius: '6px', fontFamily: fonts.sans }} />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          </section>
-        )}
-
-        {/* SMS simulator */}
-        <section style={{ ...glassCard, ...styles.simCard }}>
-          <h3 style={styles.simTitle}>Simulate incoming bank SMS</h3>
-          <p style={styles.simSub}>Paste one or more raw SMS lines — Gemini will parse each one.</p>
-          <form onSubmit={handleSmsSubmit}>
-            <textarea
-              value={smsInput}
-              onChange={(e) => setSmsInput(e.target.value)}
-              placeholder="Rs.840.00 debited from A/c XX3321 on 01-Jul-26 at SWIGGY. Avl bal Rs.14,205.10"
-              rows="3"
-              style={styles.textarea}
-              onFocus={(e) => (e.target.style.borderColor = colors.emerald)}
-              onBlur={(e) => (e.target.style.borderColor = colors.rule)}
+        {/* Main 2-Column Grid Layout */}
+        <div style={styles.mainGrid}>
+          
+          {/* Left Column: SMS Ingestion & Analytics */}
+          <div style={styles.leftCol}>
+            
+            <SmsSimulator
+              smsInput={smsInput}
+              setSmsInput={setSmsInput}
+              onSmsSubmit={handleSmsSubmit}
+              ingesting={ingesting}
             />
-            <button
-              type="submit"
-              disabled={ingesting || !smsInput.trim()}
-              style={{
-                ...styles.simButton,
-                background: ingesting ? colors.inkSoft : colors.ink,
-                cursor: smsInput.trim() && !ingesting ? 'pointer' : 'not-allowed',
-              }}
-              onMouseEnter={(e) => { if (!ingesting && smsInput.trim()) e.currentTarget.style.background = colors.emerald; }}
-              onMouseLeave={(e) => { if (!ingesting && smsInput.trim()) e.currentTarget.style.background = colors.ink; }}
-            >
-              {ingesting ? 'Gemini is parsing…' : 'Send to AI parser →'}
-            </button>
-          </form>
-        </section>
 
-        {/* Transaction log */}
-        <section>
-          <h3 style={styles.logTitle}>Transaction log ({transactions.length})</h3>
-
-          {loading && <p style={{ color: colors.inkSoft, fontSize: 14.5 }}>Loading your records…</p>}
-          {error && (
-            <div style={{ ...glassCard, color: colors.red, padding: '14px 16px', borderColor: colors.red }}>
-              ⚠️ {error}
-            </div>
-          )}
-
-          {!loading && !error && (
-            transactions.length === 0 ? (
-              <div style={{ ...glassCard, textAlign: 'center', padding: '32px', color: colors.inkSoft, fontSize: 14.5 }}>
-                No transactions yet. Paste your first bank SMS above to get started.
+            {!loading && chartData.length > 0 && (
+              <div style={{ ...glassCard, ...styles.chartSection }}>
+                <h4 style={styles.cardTitle}>Expense Breakdown</h4>
+                <div style={{ width: '100%', height: 200 }}>
+                  <ResponsiveContainer>
+                    <BarChart data={chartData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
+                      <XAxis dataKey="name" stroke={colors.inkSoft} fontSize={11} tickLine={false} axisLine={false} />
+                      <YAxis stroke={colors.inkSoft} fontSize={11} tickLine={false} axisLine={false} />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: colors.paperRaised,
+                          border: `1px solid ${colors.rule}`,
+                          borderRadius: '8px',
+                          fontSize: '12px',
+                          fontFamily: fonts.sans,
+                        }}
+                      />
+                      <Bar dataKey="Expense" fill={colors.amber} radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
               </div>
-            ) : (
-              <div style={styles.txList}>
-                {transactions.map((tx) => (
-                  <div key={tx._id} style={{ ...glassCard, ...styles.txRow }}>
-                    <div>
-                      <div style={styles.txMerchant}>{tx.merchant || 'Unknown Merchant'}</div>
-                      <div style={styles.txMeta}>
-                        <span style={styles.txBankTag}>{tx.bank || 'Unknown Bank'}</span>
-                        <span style={{ color: colors.emerald }}>{tx.category || 'Uncategorized'}</span>
-                        {' · '}
-                        {new Date(tx.createdAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
-                      </div>
-                    </div>
+            )}
+          </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                      <div style={{ ...styles.txAmount, color: tx.type === 'credit' ? colors.emerald : colors.red }}>
-                        {tx.type === 'credit' ? '+' : '−'} {tx.currency || 'INR'} {tx.amount}
-                      </div>
-                      <button
-                        onClick={() => handleDelete(tx._id)}
-                        style={styles.deleteBtn}
-                        onMouseEnter={(e) => (e.currentTarget.style.background = colors.redSoft)}
-                        onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
-                        title="Delete record"
-                      >
-                        🗑️
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )
-          )}
-        </section>
+          {/* Right Column: Dynamic Transaction Log */}
+          <div style={styles.rightCol}>
+            <TransactionList
+              transactions={transactions}
+              loading={loading}
+              error={error}
+              onEdit={handleOpenEditModal}
+              onDelete={handleDelete}
+            />
+          </div>
+
+        </div>
       </div>
+
+      {/* Manual Entry & Edit Modal */}
+      <TransactionModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onSubmit={handleModalSubmit}
+        initialData={editingTx}
+        loading={modalLoading}
+      />
     </div>
   );
 }
@@ -319,62 +305,107 @@ const styles = {
     background: colors.paper,
     fontFamily: fonts.sans,
     color: colors.ink,
-    overflow: 'hidden',
+    overflowX: 'hidden',
   },
   glow1: {
-    position: 'absolute', width: 480, height: 480, borderRadius: '50%',
-    background: 'radial-gradient(circle, rgba(31,93,69,0.18), transparent 70%)',
-    filter: 'blur(80px)', top: -180, right: -100, pointerEvents: 'none',
+    position: 'absolute', width: 500, height: 500, borderRadius: '50%',
+    background: 'radial-gradient(circle, rgba(31,93,69,0.12), transparent 70%)',
+    filter: 'blur(90px)', top: -180, right: -100, pointerEvents: 'none',
   },
   glow2: {
-    position: 'absolute', width: 380, height: 380, borderRadius: '50%',
-    background: 'radial-gradient(circle, rgba(181,119,44,0.14), transparent 70%)',
-    filter: 'blur(80px)', bottom: -160, left: -100, pointerEvents: 'none',
+    position: 'absolute', width: 400, height: 400, borderRadius: '50%',
+    background: 'radial-gradient(circle, rgba(181,119,44,0.1), transparent 70%)',
+    filter: 'blur(90px)', bottom: -160, left: -100, pointerEvents: 'none',
   },
-  wrap: { position: 'relative', zIndex: 1, maxWidth: 960, margin: '0 auto', padding: '48px 24px 80px' },
-  header: {
-    display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-    marginBottom: 36, paddingBottom: 24, borderBottom: `1px solid ${colors.rule}`,
+  wrap: {
+    position: 'relative',
+    zIndex: 1,
+    maxWidth: 1100,
+    margin: '0 auto',
+    padding: '40px 24px 80px',
   },
-  brand: { fontFamily: fonts.serif, fontWeight: 600, fontSize: 22, display: 'flex', alignItems: 'center', gap: 8 },
-  brandDot: { width: 7, height: 7, borderRadius: '50%', background: colors.emerald, display: 'inline-block' },
-  headerSub: { margin: '8px 0 0 0', color: colors.inkSoft, fontSize: 13.5 },
-  logoutBtn: {
-    padding: '9px 16px', background: 'transparent', border: `1px solid ${colors.red}`,
-    color: colors.red, borderRadius: 6, cursor: 'pointer', fontWeight: 600,
-    fontSize: 13, transition: 'all .15s', fontFamily: fonts.sans,
+  actionToolbar: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 16,
+    marginBottom: 20,
   },
-  metricsGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginBottom: 28 },
-  metricCard: { padding: '20px 22px' },
-  metricLabel: { fontFamily: fonts.mono, fontSize: 11.5, textTransform: 'uppercase', letterSpacing: '0.06em', color: colors.inkSoft },
-  metricValue: { fontFamily: fonts.mono, fontSize: 26, fontWeight: 500, marginTop: 8 },
-  chartGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16, marginBottom: 28 },
-  chartCard: { padding: '20px' },
-  cardTitle: { fontFamily: fonts.serif, fontWeight: 500, fontSize: 17, margin: '0 0 14px 0' },
-  simCard: { padding: '24px', marginBottom: 28 },
-  simTitle: { fontFamily: fonts.serif, fontWeight: 500, fontSize: 18, margin: 0 },
-  simSub: { color: colors.inkSoft, fontSize: 13.5, margin: '6px 0 16px 0' },
-  textarea: {
-    width: '100%', padding: '12px 14px', borderRadius: 6, border: `1px solid ${colors.rule}`,
-    background: colors.paperRaised, color: colors.ink, fontSize: 13.5, fontFamily: fonts.mono,
-    resize: 'vertical', boxSizing: 'border-box', outline: 'none', transition: 'border-color .15s',
+  addBtn: {
+    background: colors.emerald,
+    color: '#FFF',
+    border: 'none',
+    padding: '10px 18px',
+    borderRadius: '8px',
+    fontFamily: fonts.sans,
+    fontSize: 13.5,
+    fontWeight: 500,
+    cursor: 'pointer',
+    boxShadow: '0 2px 8px rgba(31,93,69,0.25)',
   },
-  simButton: {
-    marginTop: 12, width: '100%', padding: '12px', color: colors.paper, border: 'none',
-    borderRadius: 6, fontWeight: 500, fontSize: 14.5, transition: 'background .15s',
+  filterForm: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
   },
-  logTitle: { fontFamily: fonts.serif, fontWeight: 500, fontSize: 19, margin: '0 0 16px 0' },
-  txList: { display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 420, overflowY: 'auto', paddingRight: 4 },
-  txRow: { padding: '16px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
-  txMerchant: { fontFamily: fonts.serif, fontWeight: 500, fontSize: 16.5 },
-  txMeta: { color: colors.inkSoft, fontSize: 12.5, marginTop: 4, display: 'flex', gap: 6, alignItems: 'center' },
-  txBankTag: {
-    background: colors.emeraldSoft, color: colors.emerald, padding: '2px 7px',
-    borderRadius: 4, fontSize: 10.5, fontFamily: fonts.mono, fontWeight: 600,
+  dateInput: {
+    padding: '8px 10px',
+    borderRadius: '6px',
+    border: `1px solid ${colors.rule}`,
+    background: colors.paperRaised,
+    fontSize: 13,
+    fontFamily: fonts.sans,
+    color: colors.ink,
+    outline: 'none',
   },
-  txAmount: { fontFamily: fonts.mono, fontSize: 16, fontWeight: 500 },
-  deleteBtn: {
-    background: 'none', border: 'none', color: colors.red, cursor: 'pointer',
-    fontSize: 15, padding: '6px 8px', borderRadius: 4, transition: 'background .15s',
+  dateSeparator: {
+    fontSize: 12.5,
+    color: colors.inkSoft,
+  },
+  filterBtn: {
+    padding: '8px 14px',
+    borderRadius: '6px',
+    border: `1px solid ${colors.rule}`,
+    background: colors.paperGlass,
+    color: colors.ink,
+    fontSize: 13,
+    fontWeight: 500,
+    cursor: 'pointer',
+  },
+  clearBtn: {
+    padding: '8px 12px',
+    borderRadius: '6px',
+    border: 'none',
+    background: 'transparent',
+    color: colors.red,
+    fontSize: 13,
+    cursor: 'pointer',
+  },
+  mainGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))',
+    gap: 24,
+    alignItems: 'start',
+  },
+  leftCol: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 24,
+  },
+  rightCol: {
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  chartSection: {
+    padding: '20px 22px',
+  },
+  cardTitle: {
+    fontFamily: fonts.serif,
+    fontWeight: 500,
+    fontSize: 17,
+    margin: '0 0 16px 0',
+    color: colors.ink,
   },
 };
