@@ -1,32 +1,37 @@
 const express = require("express");
 const router = express.Router();
+const { rateLimit } = require("express-rate-limit");
 
 const {
   getTransactions,
   createManualTransaction,
   updateTransaction,
+  confirmTransaction,
   deleteTransaction,
   getTransactionStats,
 } = require("../controllers/transactionController");
 
 const { ingestNotification } = require("../controllers/ingestController");
-const { protect } = require("../middleware/authMiddleware");
+const { protect, authenticateIngest } = require("../middleware/authMiddleware");
 
-// All routes below are protected
+const ingestLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 120,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { success: false, message: "Too many notifications. Slow down." },
+});
+
+// Ingest accepts a device key (phone app) OR a JWT (dashboard simulator)
+router.post("/ingest", ingestLimiter, authenticateIngest, ingestNotification);
+
+// Everything below requires a JWT
 router.use(protect);
 
-// Specialized endpoints
-router.post("/ingest", ingestNotification);
 router.post("/manual", createManualTransaction);
 router.get("/stats", getTransactionStats);
-
-// General resource collection routes
 router.route("/").get(getTransactions);
-
-// Resource item instance routes
-router
-  .route("/:id")
-  .put(updateTransaction)
-  .delete(deleteTransaction);
+router.post("/:id/confirm", confirmTransaction);
+router.route("/:id").put(updateTransaction).delete(deleteTransaction);
 
 module.exports = router;

@@ -1,3 +1,4 @@
+// backend/models/Transactions.js
 const mongoose = require("mongoose");
 
 const CATEGORIES = [
@@ -14,6 +15,18 @@ const CATEGORIES = [
   "Uncategorized",
 ];
 
+const SOURCES = [
+  "notification",
+  "sms",
+  "email",
+  "statement",
+  "manual",
+  "simulator",
+];
+
+// Below this confidence a transaction is treated as "needs review"
+const MIN_CONFIDENCE = 0.7;
+
 const TransactionSchema = new mongoose.Schema(
   {
     user: {
@@ -23,7 +36,7 @@ const TransactionSchema = new mongoose.Schema(
       index: true,
     },
 
-    // 1. Raw Incoming Data
+    // 1. Raw Incoming Data (audit trail)
     rawText: {
       type: String,
       required: [true, "Raw SMS text is required for auditing purposes."],
@@ -38,6 +51,7 @@ const TransactionSchema = new mongoose.Schema(
     amount: {
       type: Number,
       required: [true, "Transaction amount must be a valid numerical value."],
+      min: [0.01, "Transaction amount must be positive."],
     },
 
     // 3. Financial Categorization
@@ -76,26 +90,57 @@ const TransactionSchema = new mongoose.Schema(
       trim: true,
     },
 
-    // 6. Queue Idempotency Key
+    // 6. Where it came from + duplicate handling
+    source: {
+      type: String,
+      enum: SOURCES,
+      default: "notification",
+    },
+    sourceApp: { type: String, trim: true, maxlength: 100 }, // e.g. com.phonepe.app
+    refNumber: { type: String, trim: true, uppercase: true }, // UPI ref / txn id
+    possibleDuplicate: { type: Boolean, default: false },
+    duplicateOf: { type: mongoose.Schema.Types.ObjectId, ref: "Transaction" },
+
+    // 7. Queue Idempotency Key
     sourceJobId: {
       type: String,
       unique: true,
       sparse: true,
     },
+
+    // Defined explicitly (not immutable) so a user can correct the date
+    createdAt: { type: Date, default: Date.now },
   },
   {
-    timestamps: true, // Automatically handles createdAt and updatedAt
+    timestamps: true, // still manages updatedAt
   }
 );
 
 /* ==========================================================
-   INDEXES FOR DASHBOARD QUERY PERFORMANCE
+   INDEXES
 ========================================================== */
 
-// Fast lookup for user recent transactions feed
+// Recent-transactions feed
 TransactionSchema.index({ user: 1, createdAt: -1 });
 
-// Fast merchant filtering and analytical aggregation
+// Merchant analytics
 TransactionSchema.index({ merchant: 1, createdAt: -1 });
 
-module.exports = mongoose.model("Transaction", TransactionSchema);
+// Fuzzy duplicate lookup (same user, direction, amount, close in time)
+TransactionSchema.index({ user: 1, type: 1, amount: 1, createdAt: 1 });
+
+// Hard backstop against saving the same payment twice when two jobs race:
+// one user + one reference number + one direction.
+TransactionSchema.index(
+  { user: 1, refNumber: 1, type: 1 },
+  { unique: true, partialFilterExpression: { refNumber: { $type: "string" } } }
+);
+
+const Transaction = mongoose.model("Transaction", TransactionSchema);
+
+// Single source of truth, shared by the worker and the controllers
+Transaction.CATEGORIES = CATEGORIES;
+Transaction.SOURCES = SOURCES;
+Transaction.MIN_CONFIDENCE = MIN_CONFIDENCE;
+
+module.exports = Transaction;
