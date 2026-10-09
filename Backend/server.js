@@ -1,3 +1,4 @@
+const http = require("http");
 const express = require("express");
 const cors = require("cors");
 const dotenv = require("dotenv");
@@ -5,24 +6,25 @@ const helmet = require("helmet");
 const hpp = require("hpp");
 const compression = require("compression");
 const { rateLimit } = require("express-rate-limit");
-const workers = require("./workers/transactionWorker");
-const connectDB = require("./config/db");
 
-// Load Environment Variables
+// Load Environment Variables (before requiring modules that read process.env at import time)
 dotenv.config({ quiet: true, override: false });
 
 // Validate Required Environment Variables
-require("./config/env");
+const env = require("./config/env");
+
+const initWorkers = require("./workers/transactionWorker");
+const connectDB = require("./config/db");
+const { closeQueue } = require("./queues/transactionQueue");
+const { initSocket, closeSocket } = require("./config/socket");
+const { notFound, errorHandler } = require("./middleware/errorMiddleware");
 
 // Initialize Express
 const app = express();
-const PORT = process.env.PORT || 5001;
-
-// Connect MongoDB
-connectDB();
+const PORT = env.PORT;
 
 /* ==========================================================
-   SECURITY MIDDLEWARE
+   SECURITY & GLOBAL MIDDLEWARE
 ========================================================== */
 
 app.disable("x-powered-by");
@@ -36,6 +38,7 @@ app.use(
 
 app.use(compression());
 
+// Trust proxy for reverse proxies (Vercel, Nginx, Cloudflare)
 app.set("trust proxy", 1);
 
 /* ==========================================================
@@ -49,42 +52,43 @@ app.use((req, res, next) => {
   ) {
     return res.redirect(`https://${req.headers.host}${req.originalUrl}`);
   }
-
   next();
 });
 
 /* ==========================================================
-   CORS
+   CORS (exact origins only; shared with Socket.io)
 ========================================================== */
 
-/* ==========================================================
-   CORS (Dynamic Pattern Matching)
-========================================================== */
+const allowedOrigins = new Set([
+  env.CLIENT_URL,
+  "https://finaai-mu.vercel.app",
+]);
+const localhostRegex = /^http:\/\/localhost(:\d+)?$/;
+
+const corsOrigin = (origin, callback) => {
+  // Allow requests with no origin (like mobile apps or curl)
+  if (!origin) return callback(null, true);
+
+  if (allowedOrigins.has(origin)) return callback(null, true);
+
+  // Local development only
+  if (process.env.NODE_ENV !== "production" && localhostRegex.test(origin)) {
+    return callback(null, true);
+  }
+
+  // Return null, false to reject origin cleanly without triggering a 500 internal server error
+  return callback(null, false);
+};
 
 app.use(
   cors({
-    origin: (origin, callback) => {
-      // Allow local development configurations
-      if (!origin || origin.startsWith("http://localhost")) {
-        return callback(null, true);
-      }
-
-      // 🟢 Allow production domain OR any dynamic preview branch domains from your project
-      if (
-        origin === "https://finaai-mu.vercel.app" || 
-        origin.endsWith(".vercel.app")
-      ) {
-        return callback(null, true);
-      }
-
-      // Deny any random unauthorized origins
-      return callback(new Error("Not allowed by CORS"));
-    },
+    origin: corsOrigin,
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "x-api-key"],
+    allowedHeaders: ["Content-Type", "Authorization", "x-api-key", "x-device-key"],
   })
 );
+
 /* ==========================================================
    BODY PARSER + SANITIZATION
 ========================================================== */
@@ -113,21 +117,12 @@ const generalLimiter = rateLimit({
   limit: 100,
   standardHeaders: "draft-7",
   legacyHeaders: false,
+  // Ingest has its own limiter (see transactionRoutes.js). Phone and laptop
+  // often share one home IP, so they must not share this budget.
+  skip: (req) => req.originalUrl.startsWith("/api/v1/transactions/ingest"),
   message: {
     success: false,
     message: "Too many requests. Please try again later.",
-  },
-});
-
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  limit: 10,
-  standardHeaders: "draft-7",
-  legacyHeaders: false,
-  message: {
-    success: false,
-    message:
-      "Too many login attempts. Please try again after 15 minutes.",
   },
 });
 
@@ -141,45 +136,47 @@ app.use(
   require("./routes/transactionRoutes")
 );
 
-app.use("/api/v1/auth/login", authLimiter);
-
+// Auth router mounted directly (apply authLimiter inside authRoutes.js on router.post('/login'))
 app.use("/api/v1/auth", require("./routes/authRoutes"));
 
 /* ==========================================================
-   GLOBAL ERROR HANDLER
+   404 + GLOBAL ERROR HANDLER (must stay last)
 ========================================================== */
 
-app.use((err, req, res, next) => {
-  if (process.env.NODE_ENV === "development") {
-    console.error(err);
-  }
+app.use(notFound);
+app.use(errorHandler);
 
-  res.status(err.status || 500).json({
-    success: false,
-    message:
-      process.env.NODE_ENV === "production"
-        ? "Internal Server Error"
-        : err.message,
-    ...(process.env.NODE_ENV === "development" && {
-      stack: err.stack,
-    }),
+/* ==========================================================
+   DATABASE, SOCKET.IO & SERVER INITIALIZATION
+========================================================== */
+
+let server;
+
+connectDB()
+  .then(() => {
+    server = http.createServer(app);
+
+    // Socket.io first, so the worker can push as soon as it saves
+    initSocket(server, corsOrigin);
+
+    // Start background workers only after successful DB connection
+    initWorkers();
+
+    server.listen(PORT, "0.0.0.0", () => {
+      if (process.env.NODE_ENV === "development") {
+        console.log(`Server running on http://localhost:${PORT}`);
+      } else {
+        console.log("Server started successfully.");
+      }
+    });
+  })
+  .catch((err) => {
+    console.error("Failed to connect to Database:", err);
+    process.exit(1);
   });
-});
 
 /* ==========================================================
-   START SERVER
-========================================================== */
-
-const server = app.listen(PORT, "0.0.0.0", () => {
-  if (process.env.NODE_ENV === "development") {
-    console.log(` Server running on http://localhost:${PORT}`);
-  } else {
-    console.log("Server started successfully.");
-  }
-});
-
-/* ==========================================================
-   PROCESS ERROR HANDLING
+   PROCESS ERROR HANDLING & GRACEFUL SHUTDOWN
 ========================================================== */
 
 process.on("unhandledRejection", (err) => {
@@ -191,10 +188,20 @@ process.on("uncaughtException", (err) => {
   process.exit(1);
 });
 
-process.on("SIGTERM", () => {
+process.on("SIGTERM", async () => {
   console.log("SIGTERM received. Shutting down gracefully...");
-  server.close(() => {
-    console.log("Server closed.");
-    process.exit(0);
-  });
+
+  // Don't hang forever if something refuses to close
+  setTimeout(() => process.exit(1), 10_000).unref();
+
+  try {
+    await initWorkers.stop?.();
+    await closeQueue();
+    await closeSocket(); // also closes the HTTP server
+  } catch (err) {
+    console.error("Error during shutdown:", err.message);
+  }
+
+  console.log("Server closed.");
+  process.exit(0);
 });

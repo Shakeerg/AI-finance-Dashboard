@@ -24,6 +24,10 @@
     "hpp": "^0.2.3",
     "ioredis": "^5.11.1",
     "jsonwebtoken": "^9.0.3",
-    "mongoose": "^9.7.3"
+    "mongoose": "^9.7.3",
+    "socket.io": "^4.8.4"
+  },
+  "devDependencies": {
+    "socket.io-client": "^4.8.4"
   }
 }

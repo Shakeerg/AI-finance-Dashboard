@@ -1,4 +1,5 @@
 // backend/middleware/authMiddleware.js
+const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 
@@ -24,10 +25,9 @@ const protect = async (req, res, next) => {
         });
       }
 
-      const decoded = jwt.verify(
-        token,
-        process.env.JWT_SECRET || "fina_fallback_secret_key_123"
-      );
+      const decoded = jwt.verify(token, process.env.JWT_SECRET, {
+        algorithms: ["HS256"],
+      });
 
       req.user = await User.findById(decoded.id).select("-password");
 
@@ -54,22 +54,35 @@ const protect = async (req, res, next) => {
   });
 };
 
-const protectRoute = (req, res, next) => {
-  try {
-    const clientApiKey = req.headers["x-api-key"];
+// Device-key guard for the phone app (sent as the x-device-key header)
+const DEVICE_KEY_REGEX = /^fina_[a-f0-9]{64}$/;
 
-    if (!clientApiKey) {
+const protectDevice = async (req, res, next) => {
+  try {
+    const key = req.headers["x-device-key"];
+    if (typeof key !== "string" || !DEVICE_KEY_REGEX.test(key)) {
       return res.status(401).json({
         success: false,
-        message: "Access Denied: No API key provided",
+        message: "Invalid device key.",
       });
     }
 
-    if (clientApiKey !== process.env.FINA_INTERNAL_API_KEY) {
-      return res.status(403).json({
+    const hash = crypto.createHash("sha256").update(key).digest("hex");
+    const user = await User.findOne({ deviceKeyHash: hash }).select("-password");
+
+    if (!user) {
+      return res.status(401).json({
         success: false,
-        message: "Access Denied: Invalid API key",
+        message: "Invalid device key.",
       });
+    }
+
+    req.user = user;
+
+    // Update "last seen" at most once a minute
+    const last = user.deviceLastSeenAt?.getTime() ?? 0;
+    if (Date.now() - last > 60_000) {
+      User.updateOne({ _id: user._id }, { $set: { deviceLastSeenAt: new Date() } }).catch(() => {});
     }
 
     return next();
@@ -78,7 +91,14 @@ const protectRoute = (req, res, next) => {
   }
 };
 
+// Phone app sends x-device-key; the dashboard simulator sends a JWT
+const authenticateIngest = (req, res, next) =>
+  req.headers["x-device-key"]
+    ? protectDevice(req, res, next)
+    : protect(req, res, next);
+
 module.exports = {
   protect,
-  protectRoute,
+  protectDevice,
+  authenticateIngest,
 };

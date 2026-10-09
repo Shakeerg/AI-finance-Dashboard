@@ -15,20 +15,24 @@ const CATEGORIES = [
 ];
 
 const colors = {
-  paperRaised: '#FBF8F1',
-  paperGlass: 'rgba(251,248,241,0.92)',
-  ink: '#1C1B17',
-  inkSoft: '#5B584E',
-  rule: '#DCD5C4',
-  emerald: '#1F5D45',
-  red: '#9A3B2E',
-  redSoft: '#F5E6E2',
+  paper: 'var(--bg)',
+  paperRaised: 'var(--surface2)',
+  paperGlass: 'var(--surface)',
+  ink: 'var(--ink)',
+  inkSoft: 'var(--ink2)',
+  rule: 'var(--line)',
+  emerald: 'var(--accent)',
+  emeraldSoft: 'var(--accentSoft)',
+  amber: 'var(--amber)',
+  amberSoft: 'var(--amberSoft)',
+  red: 'var(--red)',
+  redSoft: 'var(--redSoft)',
 };
 
 const fonts = {
-  serif: "'Fraunces', Georgia, serif",
-  sans: "'IBM Plex Sans', system-ui, sans-serif",
-  mono: "'IBM Plex Mono', 'Courier New', monospace",
+  serif: 'var(--sans)',
+  sans: 'var(--sans)',
+  mono: 'var(--mono)',
 };
 
 const overlayStyle = {
@@ -49,7 +53,7 @@ const overlayStyle = {
 
 const modalStyle = {
   background: colors.paperGlass,
-  border: '1px solid rgba(255,255,255,0.7)',
+  border: '1px solid var(--line)',
   borderRadius: '16px',
   boxShadow: '0 24px 48px -12px rgba(28,27,23,0.3)',
   width: '100%',
@@ -58,11 +62,24 @@ const modalStyle = {
   boxSizing: 'border-box',
 };
 
+// Local calendar date as YYYY-MM-DD (toISOString() would give the UTC date,
+// which is the wrong day for a transaction made after midnight in India)
+const localDateStr = (d = new Date()) => {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+
 // Helper function to format YYYY-MM-DD for date inputs
 const formatDateForInput = (dateString) => {
-  if (!dateString) return new Date().toISOString().split('T')[0];
-  return new Date(dateString).toISOString().split('T')[0];
+  if (!dateString) return localDateStr();
+  const d = new Date(dateString);
+  return Number.isNaN(d.getTime()) ? localDateStr() : localDateStr(d);
 };
+
+// Picked day -> timestamp for the API. Today keeps the current time; any other day
+// uses local noon so it can never slip into the previous/next day.
+const dateToApi = (day) =>
+  day === localDateStr() ? new Date().toISOString() : new Date(`${day}T12:00:00`).toISOString();
 
 export default function TransactionModal({ isOpen, onClose, onSubmit, initialData = null, loading = false }) {
   const isEditMode = Boolean(initialData && initialData._id);
@@ -74,7 +91,7 @@ export default function TransactionModal({ isOpen, onClose, onSubmit, initialDat
     type: 'debit',
     bank: 'Cash',
     currency: 'INR',
-    date: new Date().toISOString().split('T')[0],
+    date: localDateStr(),
   });
 
   const [error, setError] = useState('');
@@ -116,7 +133,7 @@ export default function TransactionModal({ isOpen, onClose, onSubmit, initialDat
         type: 'debit',
         bank: 'Cash',
         currency: 'INR',
-        date: new Date().toISOString().split('T')[0],
+        date: localDateStr(),
       });
     }
     setError('');
@@ -136,10 +153,20 @@ export default function TransactionModal({ isOpen, onClose, onSubmit, initialDat
       return;
     }
 
-    onSubmit({
-      ...formData,
-      amount: Number(formData.amount),
-    });
+    const payload = { ...formData, amount: Number(formData.amount) };
+
+    // When editing, only send the date if the user changed it. Re-sending the
+    // unchanged day would overwrite the exact time the bank notification arrived.
+    const originalDay = isEditMode
+      ? formatDateForInput(initialData.date || initialData.createdAt)
+      : null;
+    if (isEditMode && formData.date === originalDay) {
+      delete payload.date;
+    } else {
+      payload.date = dateToApi(formData.date);
+    }
+
+    onSubmit(payload);
   };
 
   return (
@@ -327,7 +354,7 @@ const styles = {
     borderRadius: '6px',
     border: 'none',
     background: colors.emerald,
-    color: '#FFF',
+    color: 'var(--onAccent)',
     fontWeight: 500,
     cursor: 'pointer',
     fontSize: 13.5,
