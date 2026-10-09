@@ -1,30 +1,36 @@
 import React from 'react';
 
 const colors = {
-  paper: '#F5F1E8',
-  paperRaised: '#FBF8F1',
-  paperGlass: 'rgba(251,248,241,0.6)',
-  ink: '#1C1B17',
-  inkSoft: '#5B584E',
-  rule: '#DCD5C4',
-  emerald: '#1F5D45',
+  paper: 'var(--bg)',
+  paperRaised: 'var(--surface2)',
+  paperGlass: 'var(--surface)',
+  ink: 'var(--ink)',
+  inkSoft: 'var(--ink2)',
+  rule: 'var(--line)',
+  emerald: 'var(--accent)',
+  emeraldSoft: 'var(--accentSoft)',
+  amber: 'var(--amber)',
+  amberSoft: 'var(--amberSoft)',
+  red: 'var(--red)',
+  redSoft: 'var(--redSoft)',
 };
 
 const fonts = {
-  serif: "'Fraunces', Georgia, serif",
-  mono: "'IBM Plex Mono', 'Courier New', monospace",
+  serif: 'var(--sans)',
+  sans: 'var(--sans)',
+  mono: 'var(--mono)',
 };
 
 const glassCard = {
-  background: colors.paperGlass,
-  backdropFilter: 'blur(14px) saturate(140%)',
-  WebkitBackdropFilter: 'blur(14px) saturate(140%)',
-  border: '1px solid rgba(255,255,255,0.5)',
+  background: 'var(--surface)',
+  border: '1px solid var(--line)',
   borderRadius: '12px',
-  boxShadow: '0 16px 34px -20px rgba(28,27,23,0.25), inset 0 1px 0 rgba(255,255,255,0.55)',
 };
 
-export default function SmsSimulator({ smsInput, setSmsInput, onSmsSubmit, ingesting }) {
+const RESULT_COLORS = { success: colors.emerald, warn: colors.amber, error: colors.red };
+
+// result: { type: 'success' | 'warn' | 'error', text: string } | null
+export default function SmsSimulator({ smsInput, setSmsInput, onSmsSubmit, ingesting, result }) {
   return (
     <section style={{ ...glassCard, ...styles.simCard }}>
       <h3 style={styles.simTitle}>Simulate incoming bank SMS</h3>
@@ -54,15 +60,21 @@ export default function SmsSimulator({ smsInput, setSmsInput, onSmsSubmit, inges
             if (!ingesting && smsInput.trim()) e.currentTarget.style.background = colors.ink;
           }}
         >
-          {ingesting ? 'Gemini is parsing…' : 'Send to AI parser →'}
+          {ingesting ? 'Sending…' : 'Send to AI parser →'}
         </button>
       </form>
+
+      {result && (
+        <p style={{ ...styles.result, color: RESULT_COLORS[result.type] || colors.inkSoft }}>
+          {result.text}
+        </p>
+      )}
     </section>
   );
 }
 
 const styles = {
-  simCard: { padding: '24px', marginBottom: 28 },
+  simCard: { padding: '24px' },
   simTitle: { fontFamily: fonts.serif, fontWeight: 500, fontSize: 18, margin: 0 },
   simSub: { color: colors.inkSoft, fontSize: 13.5, margin: '6px 0 16px 0' },
   textarea: {
@@ -90,4 +102,5 @@ const styles = {
     fontSize: 14.5,
     transition: 'background .15s',
   },
+  result: { margin: '12px 0 0 0', fontSize: 13, lineHeight: 1.45 },
 };

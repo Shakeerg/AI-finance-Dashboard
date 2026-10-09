@@ -7,6 +7,15 @@ const rawBaseUrl =
 
 const BASE_URL = rawBaseUrl.replace(/\/+$/, '');
 
+// Socket.io lives on the server root, not under /api/v1
+export const API_ORIGIN = (() => {
+  try {
+    return new URL(BASE_URL).origin;
+  } catch {
+    return BASE_URL;
+  }
+})();
+
 export const TOKEN_KEY = 'fina_token';
 
 const apiClient = axios.create({
@@ -54,6 +63,22 @@ export const registerUserApi = async (name, email, password) => {
   return response.data;
 };
 
+// 📱 Phone-app device key (the plain key is returned only once, on create)
+export const getDeviceKeyStatus = async () => {
+  const response = await apiClient.get('/auth/device-key');
+  return response.data; // { hasKey, prefix, createdAt, lastSeenAt }
+};
+
+export const createDeviceKey = async () => {
+  const response = await apiClient.post('/auth/device-key');
+  return response.data; // { deviceKey }
+};
+
+export const revokeDeviceKey = async () => {
+  const response = await apiClient.delete('/auth/device-key');
+  return response.data;
+};
+
 // 📥 Fetch Paginated & Filtered Transactions
 export const fetchTransactions = async (page = 1, limit = 20, startDate = null, endDate = null) => {
   const params = { page, limit };
@@ -71,6 +96,8 @@ export const fetchTransactionStats = async () => {
 };
 
 // 📤 Ingest Bank SMS Alert
+// Resolves to { ignored: true } when the server filtered it out (OTP, promo, chat),
+// or { jobId } when it was queued for the AI parser.
 export const processIncomingSMS = async (message, timestamp = Date.now()) => {
   const response = await apiClient.post('/transactions/ingest', { message, timestamp });
   return response.data;
@@ -79,7 +106,7 @@ export const processIncomingSMS = async (message, timestamp = Date.now()) => {
 // ✍️ Create Manual Transaction Record
 export const createManualTransaction = async (transactionData) => {
   const transactionDate = transactionData.date || transactionData.createdAt || new Date().toISOString();
-  
+
   const payload = {
     ...transactionData,
     date: transactionDate,
@@ -103,6 +130,12 @@ export const updateTransaction = async (id, transactionData) => {
   };
 
   const response = await apiClient.put(`/transactions/${id}`, payload);
+  return response.data;
+};
+
+// ✅ Mark a flagged transaction as reviewed (clears low-confidence + duplicate flags)
+export const confirmTransaction = async (id) => {
+  const response = await apiClient.post(`/transactions/${id}/confirm`);
   return response.data;
 };
 
