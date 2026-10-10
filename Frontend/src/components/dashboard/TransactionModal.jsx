@@ -170,8 +170,8 @@ export default function TransactionModal({ isOpen, onClose, onSubmit, initialDat
   };
 
   return (
-    <div style={overlayStyle} onClick={onClose}>
-      <div style={modalStyle} onClick={(e) => e.stopPropagation()}>
+    <div className="fa-modal-overlay" style={overlayStyle} onClick={onClose}>
+      <div className="fa-modal" style={modalStyle} onClick={(e) => e.stopPropagation()}>
         <div style={styles.header}>
           <h3 style={styles.title}>{isEditMode ? 'Edit Transaction' : 'Add Manual Transaction'}</h3>
           <button style={styles.closeBtn} onClick={onClose} type="button">✕</button>

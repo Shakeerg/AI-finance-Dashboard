@@ -1,33 +1,21 @@
+const tech = ["React", "Node.js", "Express", "MongoDB", "Gemini AI", "Redis", "BullMQ", "Socket.io"];
+
 export default function TechStrip() {
-
-  const tech = [
-    "React",
-    "Node.js",
-    "Express",
-    "MongoDB",
-    "Gemini AI",
-    "Redis",
-    "BullMQ"
-  ];
-
   return (
-    <section className="tech-strip">
-      <div className="container">
-
-        <div className="tech-strip-inner">
-
-          <span className="tech-title">
-            BUILT WITH
-          </span>
-
-          <div className="tech-list">
-            {tech.map((item) => (
-              <span key={item}>{item}</span>
-            ))}
-          </div>
-
+    <section className="tech-strip" aria-label="Built with">
+      <div className="marquee">
+        <div className="marquee-track">
+          {[0, 1].map((copy) => (
+            <ul key={copy} className="marquee-set" aria-hidden={copy === 1 ? "true" : undefined}>
+              {tech.map((item) => (
+                <li key={item}>
+                  <span>{item}</span>
+                  <i aria-hidden="true">✦</i>
+                </li>
+              ))}
+            </ul>
+          ))}
         </div>
-
       </div>
     </section>
   );

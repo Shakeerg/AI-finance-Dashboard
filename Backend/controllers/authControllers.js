@@ -10,12 +10,25 @@ const generateToken = (id) => {
   );
 };
 
+// Request fields must be plain strings: an object such as {"$ne": null} must never reach a query
+const asString = (value) => (typeof value === "string" ? value.trim() : "");
+const asEmail = (value) => asString(value).toLowerCase();
+
 const hashKey = (key) => crypto.createHash("sha256").update(key).digest("hex");
 
 // @route POST /api/v1/auth/register
 const registerUser = async (req, res, next) => {
   try {
-    const { name, email, password } = req.body;
+    const name = asString(req.body?.name);
+    const email = asEmail(req.body?.email);
+    const password = typeof req.body?.password === "string" ? req.body.password : "";
+
+    if (!name || !email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Name, email and password are required.",
+      });
+    }
 
     const userExists = await User.findOne({ email });
 
@@ -50,7 +63,15 @@ const registerUser = async (req, res, next) => {
 const loginUser = async (req, res, next) => {
 
   try {
-    const { email, password } = req.body;
+    const email = asEmail(req.body?.email);
+    const password = typeof req.body?.password === "string" ? req.body.password : "";
+
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Email and password are required.",
+      });
+    }
 
     const user = await User.findOne({ email }).select("+password");
 
