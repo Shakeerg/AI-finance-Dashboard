@@ -108,7 +108,7 @@ export default function AuthForm({ mode }) {
           <Link to="/" className="auth-back rise" style={{ '--d': '1.1s' }}>← Back to home</Link>
         </section>
 
-        <section className="auth-side">
+          <main className="auth-side">
           <form className="auth-card" onSubmit={handleSubmit} noValidate={false}>
             <div className="auth-card-head">
               <h2>{isLogin ? 'Sign in' : 'Create your account'}</h2>
@@ -171,7 +171,7 @@ export default function AuthForm({ mode }) {
               )}
             </p>
           </form>
-        </section>
+        </main>
       </div>
     </div>
   );
