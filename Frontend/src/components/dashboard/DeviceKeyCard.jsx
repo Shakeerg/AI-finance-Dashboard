@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { getDeviceKeyStatus, createDeviceKey, revokeDeviceKey } from '../../services/api';
 
 const colors = {
@@ -46,20 +46,40 @@ export default function DeviceKeyCard() {
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState(null);
 
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+
   const loadStatus = useCallback(async () => {
     try {
       const data = await getDeviceKeyStatus();
+      if (!alive.current) return;
       setStatus(data);
       setError(null);
     } catch (err) {
+      if (!alive.current) return;
       setError(err.response?.data?.message || 'Could not load phone-app status.');
     }
   }, []);
 
   useEffect(() => {
     loadStatus();
-    const id = setInterval(loadStatus, 30000); // keeps "last sent" fresh
-    return () => clearInterval(id);
+    // Keeps "last sent" fresh, but never polls from a background tab (saves API calls and battery)
+    const id = setInterval(() => {
+      if (!document.hidden) loadStatus();
+    }, 30000);
+    const onVisible = () => {
+      if (!document.hidden) loadStatus();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, [loadStatus]);
 
   const handleGenerate = async () => {

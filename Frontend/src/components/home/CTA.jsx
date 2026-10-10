@@ -3,68 +3,44 @@ import { Link } from "react-router-dom";
 export default function CTA() {
   return (
     <section className="cta">
-
       <div className="container">
-
-        <div className="cta-card" data-aos="zoom-in">
-
-          <p className="eyebrow">
-            START TODAY
-          </p>
-
+        <div className="cta-card" data-reveal="scale">
+          <p className="eyebrow">Start today</p>
           <h2>
             Let AI organize
             <br />
             your finances.
           </h2>
-
           <p className="cta-text">
-            Join thousands of users using AI to automatically
-            track expenses, understand spending,
-            and save more every month.
+            Create a free account, connect your phone and watch every payment land on your dashboard — already
+            categorized.
           </p>
 
           <div className="cta-buttons">
-
-            <Link
-              to="/register"
-              className="primary-btn"
-            >
-              Create Free Account →
+            <Link to="/register" className="primary-btn">
+              Create free account <span aria-hidden="true">→</span>
             </Link>
-
-            <Link
-              to="/login"
-              className="secondary-btn"
-            >
+            <Link to="/login" className="secondary-btn">
               Login
             </Link>
-
           </div>
 
-          <div className="cta-stats">
-
+          <dl className="cta-stats">
             <div>
-              <h3>25K+</h3>
-              <p>Transactions Processed</p>
+              <dt><span data-count="0.9" data-decimals="1" data-suffix=" s">0.9 s</span></dt>
+              <dd>First paint</dd>
             </div>
-
             <div>
-              <h3>98%</h3>
-              <p>Extraction Accuracy</p>
+              <dt><span data-count="100">100</span></dt>
+              <dd>Best-practices score</dd>
             </div>
-
             <div>
-              <h3>24/7</h3>
-              <p>AI Monitoring</p>
+              <dt>0 ms</dt>
+              <dd>Blocking time</dd>
             </div>
-
-          </div>
-
+          </dl>
         </div>
-
       </div>
-
     </section>
   );
 }

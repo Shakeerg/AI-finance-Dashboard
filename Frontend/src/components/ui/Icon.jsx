@@ -52,6 +52,20 @@ const PATHS = {
   check: <path d="M20 6L9 17l-5-5" />,
   trash: <path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" />,
   download: <path d="M12 3v12M7 10l5 5 5-5M4 21h16" />,
+  alert: (
+    <>
+      <path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />
+      <path d="M12 9v4M12 17h.01" />
+    </>
+  ),
+  clock: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
+    </>
+  ),
+  up: <path d="M7 17L17 7M8 7h9v9" />,
+  down: <path d="M7 7l10 10M17 8v9H8" />,
   pencil: <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />,
 };
 

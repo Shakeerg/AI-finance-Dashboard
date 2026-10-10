@@ -3,7 +3,9 @@ import axios from 'axios';
 // Ensure no trailing slash on BASE_URL
 const rawBaseUrl =
   import.meta.env.VITE_API_URL ||
-  'https://ai-finance-dashboard-v2t6.onrender.com/api/v1';
+  (import.meta.env.DEV
+    ? 'http://localhost:5001/api/v1'
+    : 'https://ai-finance-dashboard-v2t6.onrender.com/api/v1');
 
 const BASE_URL = rawBaseUrl.replace(/\/+$/, '');
 
@@ -43,6 +45,7 @@ apiClient.interceptors.response.use(
     const isAuthCall = error.config?.url?.includes('/auth/');
     if (error.response?.status === 401 && !isAuthCall) {
       localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem('fina_user');
       if (window.location.pathname !== '/login') {
         window.location.assign('/login');
       }

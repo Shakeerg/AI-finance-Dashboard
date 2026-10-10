@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   fetchTransactions,
   processIncomingSMS,
@@ -15,6 +15,7 @@ const TransactionsContext = createContext(null);
 
 const PAGE_SIZE = 100; // the server caps a page at 100
 const MAX_PAGES = 10; // up to 1,000 recent transactions are kept in memory
+const MAX_TXNS = PAGE_SIZE * MAX_PAGES; // live updates must not grow this without limit
 
 const byNewest = (a, b) => new Date(b.createdAt) - new Date(a.createdAt);
 const errorText = (err) => err?.response?.data?.message || err?.message || 'Something went wrong.';
@@ -29,16 +30,30 @@ export function TransactionsProvider({ children }) {
   const [toast, setToast] = useState(null); // { text, kind }
   const [modal, setModal] = useState({ open: false, tx: null, saving: false });
 
+  // Everything async below checks this, so nothing touches state after sign-out/unmount
+  const alive = useRef(true);
+  const reloadTimer = useRef(null);
+  const reloadSeq = useRef(0);
   const toastTimer = useRef(null);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+      clearTimeout(toastTimer.current);
+      clearTimeout(reloadTimer.current);
+    };
+  }, []);
+
   const notify = useCallback((text, kind = 'info') => {
     setToast({ text, kind });
     clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToast(null), 2800);
   }, []);
-  useEffect(() => () => clearTimeout(toastTimer.current), []);
 
   /* ---------- loading ---------- */
   const reload = useCallback(async () => {
+    // Only the newest request may write its result: a slow older one must not overwrite fresher data
+    const seq = (reloadSeq.current += 1);
     try {
       let page = 1;
       let pages = 1;
@@ -49,13 +64,15 @@ export function TransactionsProvider({ children }) {
         pages = data.pages || 1;
         page += 1;
       } while (page <= pages && page <= MAX_PAGES);
+      if (!alive.current || seq !== reloadSeq.current) return;
       setTxns(all);
       setError(null);
     } catch (err) {
+      if (!alive.current || seq !== reloadSeq.current) return;
       setError(errorText(err));
       if (err?.response?.status === 401) logout();
     } finally {
-      setLoading(false);
+      if (alive.current && seq === reloadSeq.current) setLoading(false);
     }
   }, [logout]);
 
@@ -73,7 +90,7 @@ export function TransactionsProvider({ children }) {
         next[i] = tx;
         return next;
       }
-      return [tx, ...prev].sort(byNewest);
+      return [tx, ...prev].sort(byNewest).slice(0, MAX_TXNS);
     });
   }, []);
 
@@ -122,6 +139,7 @@ export function TransactionsProvider({ children }) {
   const bulk = useCallback(async (ids, fn, done) => {
     let ok = 0;
     for (const id of ids) {
+      if (!alive.current) return;
       try {
         await fn(id);
         ok += 1;
@@ -172,6 +190,7 @@ export function TransactionsProvider({ children }) {
     let ignored = 0;
     let failed = 0;
     for (const line of lines) {
+      if (!alive.current) break;
       try {
         const data = await processIncomingSMS(line);
         if (data?.ignored) ignored += 1;
@@ -182,20 +201,27 @@ export function TransactionsProvider({ children }) {
       }
     }
     // Socket down? Fall back to a reload once the AI has had time to finish.
-    if (queued && !connected) setTimeout(reload, 6000);
+    if (queued && !connected && alive.current) {
+      clearTimeout(reloadTimer.current);
+      reloadTimer.current = setTimeout(reload, 6000);
+    }
     return { queued, ignored, failed };
   }, [connected, reload]);
 
   /* ---------- derived ---------- */
-  const flagged = txns.filter(needsReview);
-  const counted = txns.filter((t) => !isDuplicate(t));
+  const flagged = useMemo(() => txns.filter(needsReview), [txns]);
+  const counted = useMemo(() => txns.filter((t) => !isDuplicate(t)), [txns]);
 
-  const value = {
-    txns, counted, flagged, loading, error, connected,
-    reload, confirm, remove, bulkConfirm, bulkRemove, ingest,
-    modal, openCreate, openEdit, closeModal, saveModal,
-    toast, notify,
-  };
+  // Stable unless something actually changed, so pages don't re-render for no reason
+  const value = useMemo(
+    () => ({
+      txns, counted, flagged, loading, error, connected,
+      reload, confirm, remove, bulkConfirm, bulkRemove, ingest,
+      modal, openCreate, openEdit, closeModal, saveModal,
+      toast, notify,
+    }),
+    [txns, counted, flagged, loading, error, connected, reload, confirm, remove, bulkConfirm, bulkRemove, ingest, modal, openCreate, openEdit, closeModal, saveModal, toast, notify]
+  );
 
   return <TransactionsContext.Provider value={value}>{children}</TransactionsContext.Provider>;
 }

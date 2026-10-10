@@ -60,7 +60,7 @@ app.use((req, res, next) => {
 ========================================================== */
 
 const allowedOrigins = new Set([
-  env.CLIENT_URL,
+  ...env.CLIENT_URL.split(",").map((s) => s.trim().replace(/\/+$/, "")).filter(Boolean),
   "https://finaai-mu.vercel.app",
 ]);
 const localhostRegex = /^http:\/\/localhost(:\d+)?$/;
