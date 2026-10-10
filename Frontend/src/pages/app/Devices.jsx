@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useTransactions } from '../../context/TransactionsContext';
 import DeviceKeyCard from '../../components/dashboard/DeviceKeyCard';
+import NativeStatusCard from '../../components/dashboard/NativeStatusCard';
 import SmsSimulator from '../../components/dashboard/SmsSimulator';
 import { sourceSummary } from '../../utils/analytics';
 import { timeAgo } from '../../utils/format';
@@ -54,6 +55,7 @@ export default function Devices() {
       </section>
 
       <div className="fa-grid2">
+        <NativeStatusCard />
         <DeviceKeyCard />
 
         <section className="fa-card">
