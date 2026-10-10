@@ -114,7 +114,7 @@ app.get("/health", (req, res) => {
 
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 100,
+  limit: 600,
   standardHeaders: "draft-7",
   legacyHeaders: false,
   // Ingest has its own limiter (see transactionRoutes.js). Phone and laptop
